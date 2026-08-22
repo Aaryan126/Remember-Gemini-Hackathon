@@ -11,6 +11,7 @@ struct MemoryDetailView: View {
     @State private var title = ""
     @State private var summary = ""
     @State private var tags = ""
+    @FocusState private var focusedEditField: EditField?
 
     var body: some View {
         Group {
@@ -25,12 +26,19 @@ struct MemoryDetailView: View {
             if viewModel.item(id: memoryID) != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(isEditing ? "Cancel" : "Edit") {
+                        focusedEditField = nil
                         if isEditing, let item = viewModel.item(id: memoryID) {
                             loadDraft(from: item.memory)
                         }
                         isEditing.toggle()
                     }
                     .disabled(isSaving)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedEditField = nil
+                    }
                 }
             }
         }
@@ -90,6 +98,7 @@ struct MemoryDetailView: View {
             }
             .padding(16)
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(item.memory.displayTitle)
     }
 
@@ -169,17 +178,21 @@ struct MemoryDetailView: View {
     private var editForm: some View {
         VStack(alignment: .leading, spacing: 16) {
             TextField("Title", text: $title, axis: .vertical)
+                .focused($focusedEditField, equals: .title)
                 .textFieldStyle(.roundedBorder)
 
             TextField("Summary", text: $summary, axis: .vertical)
+                .focused($focusedEditField, equals: .summary)
                 .lineLimit(3...8)
                 .textFieldStyle(.roundedBorder)
 
             TextField("Tags, separated by commas", text: $tags, axis: .vertical)
+                .focused($focusedEditField, equals: .tags)
                 .textFieldStyle(.roundedBorder)
                 .textInputAutocapitalization(.never)
 
             Button {
+                focusedEditField = nil
                 Task {
                     isSaving = true
                     let saved = await viewModel.update(
@@ -205,6 +218,12 @@ struct MemoryDetailView: View {
             .buttonStyle(.borderedProminent)
             .disabled(isSaving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+    }
+
+    private enum EditField: Hashable {
+        case title
+        case summary
+        case tags
     }
 
     private func sourceInformation(for memory: MemoryItem) -> some View {

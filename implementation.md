@@ -232,7 +232,8 @@ The `isSynchronizing` guard prevents overlapping foreground and view lifecycle t
 - empty, opening, processing, failure, and ready states;
 - a persistent on-device/lock label;
 - pull-to-refresh and foreground inbox pickup;
-- navigation to a memory detail view.
+- navigation to a memory detail view;
+- interactive keyboard dismissal when scrolling, background-tap dismissal in chat and search results, and an explicit keyboard Done action in editable forms.
 - a microphone action that opens explicit voice recording and permission states.
 
 `MemoryDetailView` shows the original, generated summary, tags, OCR disclosure, timestamps, storage location, and model version. Title, summary, and comma-separated tags are editable. Failed analysis can be retried. Delete uses confirmation and removes both the SQLite record and original library file.
@@ -312,7 +313,7 @@ Package resolution, the app build, compilation of the test bundle, and signed ph
 9. Search for a concept using different wording from the title, then verify the relevant source card ranks first.
 10. Exercise the image/text, date, and tag filters and use Clear to return to the full library.
 11. Submit a differently worded query with the keyboard Search button and wait for the **Gemma** result indicator.
-12. Open **Ask**, ask a question supported by a saved memory, and verify the answer cites and links to its source card.
+12. Open **Ask**, show the keyboard, and verify tapping the conversation or dragging it down dismisses the keyboard. Ask a question supported by a saved memory and verify the answer cites and links to its source card.
 13. Open **Privacy** and verify the search/chat operation appears without prompt or answer content.
 14. Share a URL and a text-based PDF, return to Remember, and verify both are analyzed locally. Scanned-image PDFs are not OCR'd in this slice.
 15. Tap the microphone in Memories, grant Microphone and Speech Recognition access, record a short sentence, stop, and save it.

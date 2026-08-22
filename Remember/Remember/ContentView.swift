@@ -48,6 +48,7 @@ struct ContentView: View {
 private struct MemoryLibraryView: View {
     let viewModel: LibraryViewModel
     @State private var showsVoiceCapture = false
+    @State private var isSearchPresented = false
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -69,6 +70,7 @@ private struct MemoryLibraryView: View {
                     get: { viewModel.searchQuery },
                     set: { viewModel.searchQuery = $0 }
                 ),
+                isPresented: $isSearchPresented,
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Search your memories"
             )
@@ -161,6 +163,12 @@ private struct MemoryLibraryView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                isSearchPresented = false
+            }
+        )
         .refreshable {
             await viewModel.synchronize()
         }

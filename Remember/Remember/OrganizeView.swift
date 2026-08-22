@@ -196,6 +196,7 @@ private struct OrganizationNameEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var isSaving = false
+    @FocusState private var isNameFocused: Bool
 
     init(
         title: String,
@@ -213,10 +214,12 @@ private struct OrganizationNameEditor: View {
         NavigationStack {
             Form {
                 TextField(placeholder, text: $name)
+                    .focused($isNameFocused)
                     .textInputAutocapitalization(.words)
                     .submitLabel(.done)
                     .onSubmit { save() }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -227,12 +230,19 @@ private struct OrganizationNameEditor: View {
                     Button("Save") { save() }
                         .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isNameFocused = false
+                    }
+                }
             }
         }
         .interactiveDismissDisabled(isSaving)
     }
 
     private func save() {
+        isNameFocused = false
         Task {
             isSaving = true
             let saved = await onSave(name)

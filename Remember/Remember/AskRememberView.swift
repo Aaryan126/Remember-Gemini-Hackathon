@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AskRememberView: View {
     let viewModel: LibraryViewModel
+    @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -32,6 +33,12 @@ struct AskRememberView: View {
                     }
                     .padding(.vertical, 16)
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        isComposerFocused = false
+                    }
+                )
                 .onChange(of: viewModel.chatMessages.count) { _, _ in
                     if let last = viewModel.chatMessages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -50,6 +57,12 @@ struct AskRememberView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.green)
                         .accessibilityLabel("Gemma runs on this iPhone")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isComposerFocused = false
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -101,6 +114,7 @@ struct AskRememberView: View {
                 set: { viewModel.chatInput = $0 }
             ), axis: .vertical)
                 .lineLimit(1...5)
+                .focused($isComposerFocused)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
@@ -108,6 +122,7 @@ struct AskRememberView: View {
                 .disabled(viewModel.isAnswering)
 
             Button {
+                isComposerFocused = false
                 Task { await viewModel.askRemember() }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")

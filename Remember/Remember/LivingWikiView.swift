@@ -6,6 +6,7 @@ struct LivingWikiView: View {
     @State private var showsCompilerInfo = false
     @State private var exportDocument: ProjectMemoryExportDocument?
     @State private var showsExporter = false
+    @State private var isSearchPresented = false
 
     var body: some View {
         NavigationStack {
@@ -41,11 +42,17 @@ struct LivingWikiView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    isSearchPresented = false
+                }
+            )
             .navigationTitle("Project Memory")
             .searchable(text: Binding(
                 get: { viewModel.wikiSearchQuery },
                 set: { viewModel.wikiSearchQuery = $0 }
-            ), prompt: "Search pages and aliases")
+            ), isPresented: $isSearchPresented, prompt: "Search pages and aliases")
             .refreshable {
                 await viewModel.synchronize()
             }
