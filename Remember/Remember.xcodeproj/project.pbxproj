@@ -68,6 +68,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D40000000000000000000001 /* Exceptions for "Remember" folder in "Remember" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 52A6F8C53037FD08001C6831 /* Remember */;
+		};
 		52A6F92A3038032F001C6831 /* Exceptions for "RememberShareExtension" folder in "RememberShareExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -80,6 +87,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		52A6F8C83037FD08001C6831 /* Remember */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D40000000000000000000001 /* Exceptions for "Remember" folder in "Remember" target */,
+			);
 			path = Remember;
 			sourceTree = "<group>";
 		};
@@ -545,6 +555,7 @@
 				DEVELOPMENT_TEAM = 397P48LWC5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Remember/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Remember records only when you tap Record so it can save a private voice memory on this iPhone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Remember transcribes voice memories using an installed on-device speech model; the transcript then stays in your local library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -580,6 +591,7 @@
 				DEVELOPMENT_TEAM = 397P48LWC5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Remember/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Remember records only when you tap Record so it can save a private voice memory on this iPhone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Remember transcribes voice memories using an installed on-device speech model; the transcript then stays in your local library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

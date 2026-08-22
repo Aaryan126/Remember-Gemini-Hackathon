@@ -95,7 +95,17 @@ private struct ProjectStoryView: View {
     let runCheck: () -> Void
 
     private var storyRuns: [ProjectMemoryRunSnapshot] {
-        let integrations = history.filter { $0.run.operation == .compile }
+        let sortedIntegrations = history
+            .filter { $0.run.operation == .compile }
+            .sorted { $0.run.startedAt > $1.run.startedAt }
+        var memoriesWithNewerRuns = Set<UUID>()
+        let integrations = sortedIntegrations.filter { snapshot in
+            guard let memoryID = snapshot.run.memoryID else { return true }
+            defer { memoriesWithNewerRuns.insert(memoryID) }
+            // Story presents the current outcome. Superseded failures remain in
+            // Audit, where the complete chronological record belongs.
+            return snapshot.run.status != .failed || !memoriesWithNewerRuns.contains(memoryID)
+        }
         guard let latestCheck = history.first(where: { $0.run.operation == .lint }) else {
             return integrations
         }

@@ -409,6 +409,26 @@ nonisolated enum WikiCompilationParser {
         return WikiCompilationProposal(pages: pages)
     }
 
+    static func parseOrNoChange(
+        response: String,
+        allowedCandidateIDs: Set<UUID>
+    ) -> LivingWikiCompilationResult {
+        do {
+            return LivingWikiCompilationResult(
+                proposal: try parse(
+                    response: response,
+                    allowedCandidateIDs: allowedCandidateIDs
+                ),
+                recovery: .none
+            )
+        } catch {
+            return LivingWikiCompilationResult(
+                proposal: WikiCompilationProposal(pages: []),
+                recovery: .noChange
+            )
+        }
+    }
+
     private static func jsonObjects(in response: String) -> [Data] {
         var objects: [Data] = []
         var start: String.Index?

@@ -658,7 +658,17 @@ actor MemoryStore {
                 .fetchAll(database)
             for memory in memories {
                 if var compilation = try WikiCompilation.fetchOne(database, key: memory.id) {
-                    guard compilation.sourceUpdatedAt != memory.updatedAt,
+                    let failedUnderOlderCompiler = compilation.status == .failed
+                        && compilation.modelVersion != GemmaLivingWikiCompiler.modelVersion
+                    let recoveredNoChangeUnderOlderCompiler = try compilation.status == .compiled
+                        && compilation.modelVersion != GemmaLivingWikiCompiler.modelVersion
+                        && Self.latestProjectMemoryRunUsedOutputRecovery(
+                            memoryID: memory.id,
+                            in: database
+                        )
+                    guard compilation.sourceUpdatedAt != memory.updatedAt
+                            || failedUnderOlderCompiler
+                            || recoveredNoChangeUnderOlderCompiler,
                           compilation.status != .processing else {
                         continue
                     }
@@ -683,6 +693,34 @@ actor MemoryStore {
                 }
             }
         }
+    }
+
+    nonisolated private static func latestProjectMemoryRunUsedOutputRecovery(
+        memoryID: UUID,
+        in database: Database
+    ) throws -> Bool {
+        try Bool.fetchOne(
+            database,
+            sql: """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM projectMemoryCheck checkResult
+                    WHERE checkResult.runID = (
+                        SELECT run.id
+                        FROM projectMemoryRun run
+                        WHERE run.memoryID = ? AND run.operation = ?
+                        ORDER BY run.startedAt DESC
+                        LIMIT 1
+                    )
+                    AND checkResult.checkID = ?
+                )
+                """,
+            arguments: [
+                memoryID,
+                ProjectMemoryRunOperation.compile.rawValue,
+                "run.output_recovery",
+            ]
+        ) ?? false
     }
 
     func recoverInterruptedWikiCompilations() async throws {

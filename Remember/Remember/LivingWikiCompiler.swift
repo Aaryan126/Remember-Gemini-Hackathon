@@ -7,11 +7,22 @@ import MLXVLM
 import Tokenizers
 
 nonisolated protocol LivingWikiCompiling: Sendable {
-    func compile(memory: MemoryItem, candidates: [WikiCandidate]) async throws -> WikiCompilationProposal
+    func compile(memory: MemoryItem, candidates: [WikiCandidate]) async throws -> LivingWikiCompilationResult
+}
+
+nonisolated struct LivingWikiCompilationResult: Equatable, Sendable {
+    let proposal: WikiCompilationProposal
+    let recovery: LivingWikiCompilationRecovery
+}
+
+nonisolated enum LivingWikiCompilationRecovery: Equatable, Sendable {
+    case none
+    case linkedToRetrievedPage
+    case noChange
 }
 
 actor GemmaLivingWikiCompiler: LivingWikiCompiling {
-    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v4"
+    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v6"
     nonisolated static let promptVersion = ProjectMemoryProgram.current.promptVersion
 
     nonisolated private static let cacheLimit = 20 * 1024 * 1024
@@ -21,7 +32,7 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
         self.executionGate = executionGate
     }
 
-    func compile(memory: MemoryItem, candidates: [WikiCandidate]) async throws -> WikiCompilationProposal {
+    func compile(memory: MemoryItem, candidates: [WikiCandidate]) async throws -> LivingWikiCompilationResult {
         try await executionGate.withPermit {
             MLX.Memory.cacheLimit = Self.cacheLimit
             let directory = try GemmaModelBundle.directory()
@@ -39,15 +50,28 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
             let allowedCandidateIDs = Set(candidates.map(\.page.id))
             let response = try await session.respond(to: Self.prompt(memory: memory, candidates: candidates))
             do {
-                return try WikiCompilationParser.parse(
-                    response: response,
-                    allowedCandidateIDs: allowedCandidateIDs
+                return LivingWikiCompilationResult(
+                    proposal: try WikiCompilationParser.parse(
+                        response: response,
+                        allowedCandidateIDs: allowedCandidateIDs
+                    ),
+                    recovery: .none
                 )
             } catch LivingWikiError.invalidModelResponse {
                 let repairedResponse = try await session.respond(to: Self.repairPrompt)
-                return try WikiCompilationParser.parse(
+                let repairedResult = WikiCompilationParser.parseOrNoChange(
                     response: repairedResponse,
                     allowedCandidateIDs: allowedCandidateIDs
+                )
+                guard repairedResult.recovery == .noChange,
+                      let recoveredProposal = LivingWikiMalformedOutputRecovery.proposal(
+                        candidates: candidates
+                      ) else {
+                    return repairedResult
+                }
+                return LivingWikiCompilationResult(
+                    proposal: recoveredProposal,
+                    recovery: .linkedToRetrievedPage
                 )
             }
         }
@@ -120,8 +144,40 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
 
     nonisolated private static let repairPrompt = """
         Your previous response was not valid as the required JSON object. Correct it now using the same source and candidate IDs.
-        Return only compact JSON in the exact requested shape—no Markdown or explanation.
-        Keep at most 3 highest-value pages, summaries under 70 words, rationales under 20 words, aliases to at most 3, and finish every closing bracket and brace.
+        Return only one compact JSON object—no Markdown, preamble, or explanation.
+        Use exactly this shape:
+        {"pages":[{"candidate_id":null,"type":"constraint","title":"Short title","summary":"Source-grounded summary","aliases":[],"effect":"introduced","rationale":"What changed","related_candidate_ids":[]}]}
+        Allowed type values: project, decision, constraint, experiment, feedback, person, open_question, concept.
+        Allowed effect values: introduced, strengthened, updated, contradicted, related.
+        Return at most 1 page. Keep its summary under 60 words, rationale under 16 words, and always finish every quote, bracket, and brace.
+        Copy candidate IDs exactly from the original prompt or use null. Never invent an ID.
         If no safe durable page can be expressed, return exactly {"pages":[]}.
         """
+}
+
+nonisolated enum LivingWikiMalformedOutputRecovery {
+    // Candidate retrieval has already enforced lexical or semantic relevance. This
+    // higher boundary is intentionally conservative because this path may attach
+    // evidence, but must never synthesize or rewrite knowledge from malformed JSON.
+    private static let minimumCandidateScore = 0.20
+
+    static func proposal(candidates: [WikiCandidate]) -> WikiCompilationProposal? {
+        guard let candidate = candidates.first,
+              candidate.score >= minimumCandidateScore else {
+            return nil
+        }
+        let page = candidate.page
+        return WikiCompilationProposal(pages: [
+            WikiPageProposal(
+                candidateID: page.id,
+                kind: page.kind,
+                title: page.title,
+                summary: page.summary,
+                aliases: [],
+                effect: .related,
+                rationale: "The source strongly matches this retrieved page; its existing synthesis was preserved.",
+                relatedCandidateIDs: []
+            ),
+        ])
+    }
 }

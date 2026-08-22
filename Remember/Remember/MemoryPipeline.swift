@@ -356,25 +356,65 @@ actor MemoryPipeline {
                 modelVersion: GemmaLivingWikiCompiler.modelVersion,
                 promptVersion: GemmaLivingWikiCompiler.promptVersion
             )
-            let proposal = try await wikiCompiler.compile(memory: memory, candidates: candidates)
+            let compilationResult = try await wikiCompiler.compile(memory: memory, candidates: candidates)
+            let proposal = compilationResult.proposal
             let decision = ProjectMemoryPatchEvaluator.evaluate(
                 proposal: proposal,
                 allowedCandidateIDs: Set(candidates.map(\.page.id)),
                 candidates: candidates
             )
-            try await memoryStore.applyWikiCompilation(
-                memoryID: memory.id,
-                sourceUpdatedAt: memory.updatedAt,
-                proposal: decision.proposalToApply,
-                allowedCandidateIDs: Set(candidates.map(\.page.id)),
-                runID: researchRunID,
-                runCompletion: ProjectMemoryRunCompletion(
+            let completion: ProjectMemoryRunCompletion
+            switch compilationResult.recovery {
+            case .noChange:
+                completion = ProjectMemoryRunCompletion(
+                    status: .discarded,
+                    proposedPageCount: 0,
+                    acceptedPageCount: 0,
+                    rationale: "Gemma's repaired output was still malformed, so Remember safely made no Project Memory change. The original memory remains available.",
+                    checks: decision.checks + [
+                        ProjectMemoryCheckDraft(
+                            checkID: "run.output_recovery",
+                            label: "Malformed output contained",
+                            severity: .information,
+                            passed: true,
+                            message: "Invalid model output was converted to a safe no-change result; no project page was mutated."
+                        ),
+                    ]
+                )
+            case .linkedToRetrievedPage:
+                completion = ProjectMemoryRunCompletion(
+                    status: decision.status,
+                    proposedPageCount: proposal.pages.count,
+                    acceptedPageCount: decision.proposalToApply.pages.count,
+                    rationale: decision.status == .kept
+                        ? "Gemma's repaired output was still malformed. Remember safely connected the source to the strongest retrieved page without rewriting its synthesis."
+                        : decision.rationale,
+                    checks: decision.checks + [
+                        ProjectMemoryCheckDraft(
+                            checkID: "run.output_recovery",
+                            label: "Malformed output contained",
+                            severity: .information,
+                            passed: true,
+                            message: "The source was linked to one strong, locally retrieved match; the existing page text was preserved."
+                        ),
+                    ]
+                )
+            case .none:
+                completion = ProjectMemoryRunCompletion(
                     status: decision.status,
                     proposedPageCount: proposal.pages.count,
                     acceptedPageCount: decision.proposalToApply.pages.count,
                     rationale: decision.rationale,
                     checks: decision.checks
                 )
+            }
+            try await memoryStore.applyWikiCompilation(
+                memoryID: memory.id,
+                sourceUpdatedAt: memory.updatedAt,
+                proposal: decision.proposalToApply,
+                allowedCandidateIDs: Set(candidates.map(\.page.id)),
+                runID: researchRunID,
+                runCompletion: completion
             )
             try await wikiSearchService.synchronizeIndex()
             if let activityID {

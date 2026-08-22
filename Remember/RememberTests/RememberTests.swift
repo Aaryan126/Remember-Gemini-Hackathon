@@ -710,6 +710,39 @@ struct RememberTests {
         #expect(proposal.pages.first?.summary.contains("{structured}") == true)
     }
 
+    @Test func livingWikiParserContainsMalformedRepairAsSafeNoChange() {
+        let result = WikiCompilationParser.parseOrNoChange(
+            response: "I still did not return the requested object.",
+            allowedCandidateIDs: []
+        )
+
+        #expect(result.proposal.pages.isEmpty)
+        #expect(result.recovery == .noChange)
+    }
+
+    @Test func malformedWikiOutputCanSafelyLinkOneStrongRetrievedPage() throws {
+        let existing = wikiPage(
+            kind: .constraint,
+            title: "Hackathon submission rules",
+            summary: "The submission must satisfy the published hackathon requirements.",
+            aliases: [],
+            updatedAt: Date()
+        )
+
+        let recovered = try #require(LivingWikiMalformedOutputRecovery.proposal(candidates: [
+            WikiCandidate(page: existing, score: 0.52),
+        ]))
+        let page = try #require(recovered.pages.first)
+
+        #expect(recovered.pages.count == 1)
+        #expect(page.candidateID == existing.id)
+        #expect(page.summary == existing.summary)
+        #expect(page.effect == .related)
+        #expect(LivingWikiMalformedOutputRecovery.proposal(candidates: [
+            WikiCandidate(page: existing, score: 0.12),
+        ]) == nil)
+    }
+
     @Test func livingWikiCompilationIsVersionedLinkedAndIdempotentlyQueued() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
