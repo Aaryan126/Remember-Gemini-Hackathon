@@ -17,12 +17,13 @@ nonisolated struct LivingWikiCompilationResult: Equatable, Sendable {
 
 nonisolated enum LivingWikiCompilationRecovery: Equatable, Sendable {
     case none
-    case linkedToRetrievedPage
+    case linkedAfterMalformedOutput
+    case linkedAfterNoChange
     case noChange
 }
 
 actor GemmaLivingWikiCompiler: LivingWikiCompiling {
-    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v6"
+    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v7"
     nonisolated static let promptVersion = ProjectMemoryProgram.current.promptVersion
 
     nonisolated private static let cacheLimit = 20 * 1024 * 1024
@@ -50,11 +51,19 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
             let allowedCandidateIDs = Set(candidates.map(\.page.id))
             let response = try await session.respond(to: Self.prompt(memory: memory, candidates: candidates))
             do {
+                let proposal = try WikiCompilationParser.parse(
+                    response: response,
+                    allowedCandidateIDs: allowedCandidateIDs
+                )
+                if proposal.pages.isEmpty,
+                   let evidenceProposal = LivingWikiEvidenceRecovery.proposal(candidates: candidates) {
+                    return LivingWikiCompilationResult(
+                        proposal: evidenceProposal,
+                        recovery: .linkedAfterNoChange
+                    )
+                }
                 return LivingWikiCompilationResult(
-                    proposal: try WikiCompilationParser.parse(
-                        response: response,
-                        allowedCandidateIDs: allowedCandidateIDs
-                    ),
+                    proposal: proposal,
                     recovery: .none
                 )
             } catch LivingWikiError.invalidModelResponse {
@@ -63,15 +72,15 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
                     response: repairedResponse,
                     allowedCandidateIDs: allowedCandidateIDs
                 )
-                guard repairedResult.recovery == .noChange,
-                      let recoveredProposal = LivingWikiMalformedOutputRecovery.proposal(
-                        candidates: candidates
-                      ) else {
+                guard repairedResult.proposal.pages.isEmpty,
+                      let recoveredProposal = LivingWikiEvidenceRecovery.proposal(candidates: candidates) else {
                     return repairedResult
                 }
                 return LivingWikiCompilationResult(
                     proposal: recoveredProposal,
-                    recovery: .linkedToRetrievedPage
+                    recovery: repairedResult.recovery == .noChange
+                        ? .linkedAfterMalformedOutput
+                        : .linkedAfterNoChange
                 )
             }
         }
@@ -119,7 +128,8 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
             - A page summary must integrate the new evidence with its current summary. Preserve still-valid information.
             - If evidence conflicts with a current summary, use effect "contradicted" and describe both sides without choosing one.
             - Use effect "strengthened" when it adds support, "updated" when it adds or revises information, "related" for a useful connection, and "introduced" only for new pages.
-            - Return at most 3 high-value pages. Returning zero pages is valid.
+            - Return at most 3 high-value pages. Return zero pages only when the source is not useful evidence for any retrieved candidate and introduces no durable knowledge.
+            - If a source is relevant to an existing candidate but does not change its summary, attach it with effect "related" and preserve the current summary.
             - Keep each title under 12 words, each summary under 90 words, each rationale under 30 words, and aliases to at most 4.
             - related_candidate_ids may contain only exact candidate IDs and should express useful cross-links.
             - Keep every claim traceable to the source memory.
@@ -155,11 +165,10 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
         """
 }
 
-nonisolated enum LivingWikiMalformedOutputRecovery {
+nonisolated enum LivingWikiEvidenceRecovery {
     // Candidate retrieval has already enforced lexical or semantic relevance. This
-    // higher boundary is intentionally conservative because this path may attach
-    // evidence, but must never synthesize or rewrite knowledge from malformed JSON.
-    private static let minimumCandidateScore = 0.20
+    // path only attaches evidence and preserves the existing page synthesis.
+    private static let minimumCandidateScore = 0.12
 
     static func proposal(candidates: [WikiCandidate]) -> WikiCompilationProposal? {
         guard let candidate = candidates.first,

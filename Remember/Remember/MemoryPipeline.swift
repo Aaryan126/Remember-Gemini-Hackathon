@@ -381,7 +381,7 @@ actor MemoryPipeline {
                         ),
                     ]
                 )
-            case .linkedToRetrievedPage:
+            case .linkedAfterMalformedOutput:
                 completion = ProjectMemoryRunCompletion(
                     status: decision.status,
                     proposedPageCount: proposal.pages.count,
@@ -396,6 +396,24 @@ actor MemoryPipeline {
                             severity: .information,
                             passed: true,
                             message: "The source was linked to one strong, locally retrieved match; the existing page text was preserved."
+                        ),
+                    ]
+                )
+            case .linkedAfterNoChange:
+                completion = ProjectMemoryRunCompletion(
+                    status: decision.status,
+                    proposedPageCount: proposal.pages.count,
+                    acceptedPageCount: decision.proposalToApply.pages.count,
+                    rationale: decision.status == .kept
+                        ? "Gemma found no synthesis change, but Remember connected the source to the strongest relevant page as supporting evidence."
+                        : decision.rationale,
+                    checks: decision.checks + [
+                        ProjectMemoryCheckDraft(
+                            checkID: "run.no_change_evidence_recovery",
+                            label: "Relevant evidence preserved",
+                            severity: .information,
+                            passed: true,
+                            message: "The source was attached to one strong, locally retrieved match without rewriting the existing page."
                         ),
                     ]
                 )

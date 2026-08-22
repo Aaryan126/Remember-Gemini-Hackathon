@@ -720,7 +720,7 @@ struct RememberTests {
         #expect(result.recovery == .noChange)
     }
 
-    @Test func malformedWikiOutputCanSafelyLinkOneStrongRetrievedPage() throws {
+    @Test func evidenceOnlyRecoveryCanSafelyLinkOneRetrievedPage() throws {
         let existing = wikiPage(
             kind: .constraint,
             title: "Hackathon submission rules",
@@ -729,7 +729,7 @@ struct RememberTests {
             updatedAt: Date()
         )
 
-        let recovered = try #require(LivingWikiMalformedOutputRecovery.proposal(candidates: [
+        let recovered = try #require(LivingWikiEvidenceRecovery.proposal(candidates: [
             WikiCandidate(page: existing, score: 0.52),
         ]))
         let page = try #require(recovered.pages.first)
@@ -738,8 +738,8 @@ struct RememberTests {
         #expect(page.candidateID == existing.id)
         #expect(page.summary == existing.summary)
         #expect(page.effect == .related)
-        #expect(LivingWikiMalformedOutputRecovery.proposal(candidates: [
-            WikiCandidate(page: existing, score: 0.12),
+        #expect(LivingWikiEvidenceRecovery.proposal(candidates: [
+            WikiCandidate(page: existing, score: 0.119),
         ]) == nil)
     }
 

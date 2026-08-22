@@ -6,7 +6,7 @@ nonisolated struct ProjectMemoryProgram: Sendable {
 
     let name = "Private Project Memory"
     let version = "private-project-memory-v1"
-    let promptVersion = "project-memory-compiler-v6"
+    let promptVersion = "project-memory-compiler-v7"
     let objective = "Preserve what a project knows, why choices were made, what changed, and what still needs an answer."
 
     var pageKinds: [WikiPageKind] { WikiPageKind.allCases }

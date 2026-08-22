@@ -660,15 +660,15 @@ actor MemoryStore {
                 if var compilation = try WikiCompilation.fetchOne(database, key: memory.id) {
                     let failedUnderOlderCompiler = compilation.status == .failed
                         && compilation.modelVersion != GemmaLivingWikiCompiler.modelVersion
-                    let recoveredNoChangeUnderOlderCompiler = try compilation.status == .compiled
+                    let discardedNoChangeUnderOlderCompiler = try compilation.status == .compiled
                         && compilation.modelVersion != GemmaLivingWikiCompiler.modelVersion
-                        && Self.latestProjectMemoryRunUsedOutputRecovery(
+                        && Self.latestProjectMemoryRunWasDiscardedNoChange(
                             memoryID: memory.id,
                             in: database
                         )
                     guard compilation.sourceUpdatedAt != memory.updatedAt
                             || failedUnderOlderCompiler
-                            || recoveredNoChangeUnderOlderCompiler,
+                            || discardedNoChangeUnderOlderCompiler,
                           compilation.status != .processing else {
                         continue
                     }
@@ -695,7 +695,7 @@ actor MemoryStore {
         }
     }
 
-    nonisolated private static func latestProjectMemoryRunUsedOutputRecovery(
+    nonisolated private static func latestProjectMemoryRunWasDiscardedNoChange(
         memoryID: UUID,
         in database: Database
     ) throws -> Bool {
@@ -704,21 +704,22 @@ actor MemoryStore {
             sql: """
                 SELECT EXISTS(
                     SELECT 1
-                    FROM projectMemoryCheck checkResult
-                    WHERE checkResult.runID = (
+                    FROM projectMemoryRun run
+                    WHERE run.id = (
                         SELECT run.id
                         FROM projectMemoryRun run
                         WHERE run.memoryID = ? AND run.operation = ?
                         ORDER BY run.startedAt DESC
                         LIMIT 1
                     )
-                    AND checkResult.checkID = ?
+                    AND run.status = ?
+                    AND run.acceptedPageCount = 0
                 )
                 """,
             arguments: [
                 memoryID,
                 ProjectMemoryRunOperation.compile.rawValue,
-                "run.output_recovery",
+                ProjectMemoryRunStatus.discarded.rawValue,
             ]
         ) ?? false
     }
