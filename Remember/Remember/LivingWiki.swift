@@ -372,7 +372,7 @@ nonisolated enum WikiCompilationParser {
             throw LivingWikiError.invalidModelResponse
         }
 
-        let pages = payload.pages.prefix(5).compactMap { item -> WikiPageProposal? in
+        let pages = payload.pages.prefix(3).compactMap { item -> WikiPageProposal? in
             guard let kind = WikiPageKind(rawValue: item.type),
                   let effect = WikiChangeKind(rawValue: item.effect),
                   let title = bounded(item.title, limit: 100),

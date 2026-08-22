@@ -323,6 +323,10 @@ actor MemoryPipeline {
         try await memoryStore.fetchProjectMemoryHistory()
     }
 
+    func projectMemoryPageSnapshots() async throws -> [WikiPageSnapshot] {
+        try await memoryStore.fetchAllWikiPageSnapshots()
+    }
+
     func projectMemoryExportDocument() async throws -> ProjectMemoryExportDocument {
         let pages = try await memoryStore.fetchAllWikiPageSnapshots()
         let history = try await memoryStore.fetchProjectMemoryHistory(limit: 2_000)
@@ -355,7 +359,8 @@ actor MemoryPipeline {
             let proposal = try await wikiCompiler.compile(memory: memory, candidates: candidates)
             let decision = ProjectMemoryPatchEvaluator.evaluate(
                 proposal: proposal,
-                allowedCandidateIDs: Set(candidates.map(\.page.id))
+                allowedCandidateIDs: Set(candidates.map(\.page.id)),
+                candidates: candidates
             )
             try await memoryStore.applyWikiCompilation(
                 memoryID: memory.id,

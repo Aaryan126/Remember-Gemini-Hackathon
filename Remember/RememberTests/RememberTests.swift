@@ -773,7 +773,7 @@ struct RememberTests {
         #expect(program.promptTypeList.contains("open_question"))
     }
 
-    @Test func protectedPatchEvaluatorKeepsSafePatchAndDiscardsDuplicateTargets() {
+    @Test func protectedPatchEvaluatorKeepsSafePatchAndConsolidatesDuplicateTargets() {
         let validPage = WikiPageProposal(
             candidateID: nil,
             kind: .decision,
@@ -789,7 +789,7 @@ struct RememberTests {
             proposal: WikiCompilationProposal(pages: [validPage]),
             allowedCandidateIDs: []
         )
-        let discarded = ProjectMemoryPatchEvaluator.evaluate(
+        let consolidated = ProjectMemoryPatchEvaluator.evaluate(
             proposal: WikiCompilationProposal(pages: [validPage, validPage]),
             allowedCandidateIDs: []
         )
@@ -797,9 +797,9 @@ struct RememberTests {
         #expect(kept.status == .kept)
         #expect(kept.proposalToApply.pages.count == 1)
         #expect(kept.checks.allSatisfy { $0.passed })
-        #expect(discarded.status == .discarded)
-        #expect(discarded.proposalToApply.pages.isEmpty)
-        #expect(discarded.checks.contains { $0.checkID == "patch.unique_targets" && !$0.passed })
+        #expect(consolidated.status == .kept)
+        #expect(consolidated.proposalToApply.pages.count == 1)
+        #expect(consolidated.checks.contains { $0.checkID == "patch.semantic_duplicates" && $0.message.contains("1") })
     }
 
     @Test func projectMemoryLinterReportsTraceabilityAndRevisionIntegrity() {
@@ -876,7 +876,7 @@ struct RememberTests {
         let run = try #require(history.first)
         #expect(run.run.status == .kept)
         #expect(run.memoryTitle == "Model choice")
-        #expect(run.checks.count == 5)
+        #expect(run.checks.count == 7)
         #expect(run.changes.first?.pageTitle == "Use Gemma on-device")
 
         let markdown = ProjectMemoryMarkdownRenderer.render(
@@ -889,6 +889,113 @@ struct RememberTests {
         #expect(markdown.contains("Use Gemma on-device"))
         #expect(markdown.contains("## Research History"))
         #expect(markdown.contains("test-prompt"))
+    }
+
+    @Test func projectMemoryQualityBenchmarkRejectsRuleMisclassifiedAsProject() {
+        let proposal = WikiPageProposal(
+            candidateID: nil,
+            kind: .project,
+            title: "Hackathon Submission Rules",
+            summary: "Submissions must include a repository, project name, description, demo video, and selected tracks.",
+            aliases: [],
+            effect: .introduced,
+            rationale: "The source lists required submission material.",
+            relatedCandidateIDs: []
+        )
+
+        let decision = ProjectMemoryPatchEvaluator.evaluate(
+            proposal: WikiCompilationProposal(pages: [proposal]),
+            allowedCandidateIDs: []
+        )
+
+        #expect(decision.status == .discarded)
+        #expect(decision.proposalToApply.pages.isEmpty)
+        #expect(decision.checks.contains { $0.checkID == "patch.type_suitability" && $0.message.contains("1") })
+    }
+
+    @Test func projectMemoryQualityBenchmarkKeepsConstraintAndDecisionTypes() {
+        let pages = [
+            WikiPageProposal(
+                candidateID: nil,
+                kind: .constraint,
+                title: "Submission deadline",
+                summary: "The demo video must be submitted by 4 September.",
+                aliases: [],
+                effect: .introduced,
+                rationale: "The source states a required deadline.",
+                relatedCandidateIDs: []
+            ),
+            WikiPageProposal(
+                candidateID: nil,
+                kind: .decision,
+                title: "Use Gemma locally",
+                summary: "The app will use Gemma on-device instead of a hosted API.",
+                aliases: [],
+                effect: .introduced,
+                rationale: "The source records the chosen inference architecture.",
+                relatedCandidateIDs: []
+            ),
+        ]
+
+        let decision = ProjectMemoryPatchEvaluator.evaluate(
+            proposal: WikiCompilationProposal(pages: pages),
+            allowedCandidateIDs: []
+        )
+
+        #expect(decision.status == .kept)
+        #expect(decision.proposalToApply.pages.map(\.kind) == [.constraint, .decision])
+    }
+
+    @Test func projectMemoryQualityBenchmarkRedirectsEquivalentNewPageToCandidate() {
+        let existing = wikiPage(
+            kind: .constraint,
+            title: "Hackathon Submission Rules",
+            summary: "Hackathon submissions require a GitHub repository, project name, description, demo video, and selected tracks.",
+            aliases: ["Submission guidelines"],
+            updatedAt: Date()
+        )
+        let proposal = WikiPageProposal(
+            candidateID: nil,
+            kind: .constraint,
+            title: "Required Submission Components",
+            summary: "Submissions must include a GitHub repository, project name, short description, demo video, and selected tracks.",
+            aliases: [],
+            effect: .introduced,
+            rationale: "The source repeats and clarifies required submission material.",
+            relatedCandidateIDs: []
+        )
+
+        let decision = ProjectMemoryPatchEvaluator.evaluate(
+            proposal: WikiCompilationProposal(pages: [proposal]),
+            allowedCandidateIDs: [existing.id],
+            candidates: [WikiCandidate(page: existing, score: 0.82)]
+        )
+
+        #expect(decision.proposalToApply.pages.count == 1)
+        #expect(decision.proposalToApply.pages.first?.candidateID == existing.id)
+        #expect(decision.proposalToApply.pages.first?.title == existing.title)
+        #expect(decision.proposalToApply.pages.first?.effect == .updated)
+    }
+
+    @Test func projectMemoryQualityBenchmarkLinterFindsSemanticDuplicates() {
+        let first = wikiPage(
+            kind: .constraint,
+            title: "Hackathon Submission Rules",
+            summary: "Submissions require a GitHub repository, project name, description, demo video, and selected tracks.",
+            aliases: [],
+            updatedAt: Date()
+        )
+        let second = wikiPage(
+            kind: .constraint,
+            title: "Required Submission Components",
+            summary: "Every submission must include a GitHub repository, project name, description, demo video, and selected tracks.",
+            aliases: [],
+            updatedAt: Date()
+        )
+
+        let checks = ProjectMemoryLinter.checks(pages: [first, second], evidence: [], revisions: [], links: [])
+
+        #expect(checks.contains { $0.checkID == "wiki.semantic_uniqueness" && !$0.passed })
     }
 
     private func makeTemporaryModelDirectory(excluding excludedFilename: String? = nil) throws -> URL {

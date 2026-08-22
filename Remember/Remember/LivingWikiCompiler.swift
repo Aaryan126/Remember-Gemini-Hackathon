@@ -11,7 +11,7 @@ nonisolated protocol LivingWikiCompiling: Sendable {
 }
 
 actor GemmaLivingWikiCompiler: LivingWikiCompiling {
-    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v3"
+    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v4"
     nonisolated static let promptVersion = ProjectMemoryProgram.current.promptVersion
 
     nonisolated private static let cacheLimit = 20 * 1024 * 1024
@@ -89,11 +89,13 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
             - Prefer an existing candidate when it represents the same durable subject, even if wording differs.
             - Use candidate_id only by copying an exact CANDIDATE_ID below. Otherwise use null to create a page.
             - Prefer project-specific decisions, constraints, experiments, feedback, people, and open questions over generic concepts.
+            - A project is an active effort with an objective. Rules, requirements, deadlines, and submission guidance are constraints or reference knowledge, not projects.
+            - Create fewer, broader pages. Do not split one source into pages that express substantially the same subject.
             - Do not make pages for incidental objects, generic words, or details useful only inside this memory.
             - A page summary must integrate the new evidence with its current summary. Preserve still-valid information.
             - If evidence conflicts with a current summary, use effect "contradicted" and describe both sides without choosing one.
             - Use effect "strengthened" when it adds support, "updated" when it adds or revises information, "related" for a useful connection, and "introduced" only for new pages.
-            - Return at most 5 high-value pages. Returning zero pages is valid.
+            - Return at most 3 high-value pages. Returning zero pages is valid.
             - Keep each title under 12 words, each summary under 90 words, each rationale under 30 words, and aliases to at most 4.
             - related_candidate_ids may contain only exact candidate IDs and should express useful cross-links.
             - Keep every claim traceable to the source memory.

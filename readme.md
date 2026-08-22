@@ -24,7 +24,7 @@ The initial audience is solo founders, indie hackers, designers, and makers who 
 - Uses a bundled BGE Micro model for local semantic retrieval.
 - Provides a searchable visual memory feed, filters, collections, editable metadata, and source-citing chat.
 - Compiles durable knowledge into a Living Wiki using a project-specific schema.
-- Records new compiler and lint operations in **Research History**, including source, before/after text, program/prompt/model versions, protected checks, and the keep/discard rationale.
+- Presents project evolution through **Project Story**, a tappable source-to-page timeline, and **Knowledge Map**, while retaining the complete technical ledger under **Audit**.
 - Exports the derived project memory and chronological ledger as portable Markdown.
 
 ## Architecture
@@ -43,7 +43,7 @@ flowchart TD
     J -->|Keep| K[Pages, evidence, links, revisions]
     J -->|Discard| L[No wiki mutation]
     K --> M[Whole-wiki structural lint]
-    L --> N[Research History]
+    L --> N[Project Story + Audit]
     M --> N
     K --> O[Wiki-first Ask]
     O --> P[Original memories for citations]
@@ -68,7 +68,7 @@ The current program is versioned as `private-project-memory-v1`. It asks the com
 | Open Question | An unresolved issue that affects later work or decisions |
 | Reference | Durable supporting knowledge that does not fit another type |
 
-Every source memory is compared with at most eight locally retrieved candidate pages. Gemma may propose at most five concise changes. Candidate identifiers and cross-links must come from that bounded set. If Gemma's first response is malformed, one bounded on-device repair turn asks it to emit compact JSON; deterministic validation still controls what can be written.
+Every source memory is compared with at most eight locally retrieved candidate pages. Gemma may propose at most three concise, high-value changes. Candidate identifiers and cross-links must come from that bounded set. If Gemma's first response is malformed, one bounded on-device repair turn asks it to emit compact JSON; deterministic validation still controls what can be written.
 
 ### Protected evaluator
 
@@ -79,10 +79,12 @@ Before a patch is applied, deterministic checks enforce:
 - source-grounded required fields;
 - one proposed change per canonical page;
 - no self-links.
+- obvious page-type mismatches are filtered;
+- semantically equivalent proposals are redirected to an existing page or consolidated.
 
-After a foreground compilation batch, a deterministic lint checks source traceability, revision consistency, canonical uniqueness, link integrity, and reports graph connectedness as informational context. Lint is read-only.
+After a foreground compilation batch, a deterministic lint checks source traceability, revision consistency, exact and likely semantic duplicates, link integrity, and reports graph connectedness as informational context. Lint is read-only.
 
-Research History stores evidence and operational rationale, not hidden chain-of-thought. Older Living Wiki revisions remain readable but naturally predate the new run/check ledger.
+Project Story turns those records into a narrative timeline; Knowledge Map draws explicit links and shared-evidence relationships; Audit retains the reproducible check ledger. The ledger stores evidence and operational rationale, not hidden chain-of-thought. Older Living Wiki revisions remain readable but naturally predate it.
 
 ## Open Markdown projection
 
@@ -101,7 +103,7 @@ The projection deliberately does not embed original photos, PDFs, audio, or the 
 
 - `PRD.md` — original product requirements and constraints.
 - `implementation.md` — detailed high- and low-level implementation record, validation, and device acceptance steps.
-- `Remember/Remember/` — SwiftUI app, local pipelines, database, retrieval, Living Wiki, Research History, and export.
+- `Remember/Remember/` — SwiftUI app, local pipelines, database, retrieval, Living Wiki, Project Story/Map/Audit, and export.
 - `Remember/RememberShareExtension/` — low-memory Share Extension target.
 - `Remember/Shared/` — atomic App Group capture format shared by the app and extension.
 - `Remember/RememberTests/` — deterministic unit and persistence tests.

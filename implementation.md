@@ -372,10 +372,10 @@ After a memory reaches the existing `indexed` state:
 3. `WikiSearchService` keeps a companion embedding record for every page and embeds the new memory with BGE Micro. `LivingWikiCandidateIndex` combines cosine similarity with exact titles, aliases, title/summary token overlap, and accumulated page metadata.
 4. The top direct matches expand through one graph hop so an already-linked decision or constraint can accompany a matching project even when its wording is different.
 5. At most eight candidates are included in the Gemma prompt. Gemma never receives the entire wiki.
-6. `GemmaLivingWikiCompiler` returns a strict JSON patch containing at most five page changes. Candidate UUIDs must exactly match the locally supplied allowlist; invented IDs and malformed entries are discarded.
-7. `ProjectMemoryPatchEvaluator` runs deterministic protected checks. Unsafe or empty proposals are recorded and discarded without wiki mutation; accepted proposals continue to persistence.
+6. `GemmaLivingWikiCompiler` returns a strict JSON patch containing at most three high-value page changes. Candidate UUIDs must exactly match the locally supplied allowlist; invented IDs and malformed entries are discarded.
+7. `ProjectMemoryPatchEvaluator` runs deterministic protected checks, filters obvious type mismatches, redirects semantically equivalent new pages to retrieved canonical pages, and collapses duplicate proposals. Unsafe or empty proposals are recorded and discarded without wiki mutation; accepted proposals continue to persistence.
 8. `MemoryStore.applyWikiCompilation` writes pages, source evidence, page links, run-linked revisions, and the compilation completion marker in one SQLite transaction.
-9. After a foreground compilation batch, `ProjectMemoryLinter` performs a read-only whole-wiki check for traceability, revision consistency, canonical uniqueness, link integrity, and connectedness.
+9. After a foreground compilation batch, `ProjectMemoryLinter` performs a read-only whole-wiki check for traceability, revision consistency, exact and likely semantic duplicates, link integrity, and connectedness.
 
 Only one compilation runs at a time through the existing `GemmaExecutionGate`. While the app remains foregrounded, it automatically drains the queue sequentially and refreshes the Wiki after every memory. There is no routine review inbox or “compile next” work for the user; manual interaction remains only as an exceptional retry for a failed model run. Cancellation safely returns the current source to the local queue.
 
@@ -421,19 +421,23 @@ BGE Micro is English-focused. Its small size is the right fit for the current En
 
 ### Private Project Memory program
 
-`ProjectMemoryProgram` is a fixed, versioned policy boundary rather than an unbounded agent prompt. Version `private-project-memory-v1` states the objective and exposes eight page types in both the compiler prompt and product UI: project, decision, constraint, experiment, feedback, person, open question, and reference knowledge. The compiler prompt is independently versioned as `project-memory-compiler-v3`.
+`ProjectMemoryProgram` is a fixed, versioned policy boundary rather than an unbounded agent prompt. Version `private-project-memory-v1` states the objective and exposes eight page types in both the compiler prompt and product UI: project, decision, constraint, experiment, feedback, person, open question, and reference knowledge. The compiler prompt is independently versioned as `project-memory-compiler-v4`.
 
-The v3 boundary asks for concise fields and complete closing delimiters. The parser extracts balanced JSON objects while respecting quoted braces and escapes, so Markdown fences or surrounding prose cannot corrupt an otherwise valid object. If the first output still cannot be decoded, the same local Gemma session receives one bounded repair instruction and must return compact JSON (or `{"pages":[]}`). Candidate allowlisting, field bounds, patch checks, and transactional persistence run after repair exactly as they do for a first-pass response; raw malformed output is never logged or persisted.
+The v4 boundary asks for no more than three concise, distinct pages, explicitly distinguishes active projects from rules and requirements, and requires complete closing delimiters. The parser extracts balanced JSON objects while respecting quoted braces and escapes, so Markdown fences or surrounding prose cannot corrupt an otherwise valid object. If the first output still cannot be decoded, the same local Gemma session receives one bounded repair instruction and must return compact JSON (or `{"pages":[]}`). Candidate allowlisting, field bounds, patch checks, and transactional persistence run after repair exactly as they do for a first-pass response; raw malformed output is never logged or persisted.
 
 This schema makes the product opinionated about project continuity while remaining broad enough for founders, makers, and creative work. The legacy `concept` database value remains valid and is presented as Reference Knowledge, so existing installs migrate without rewriting pages.
 
-### Research History and protected evaluation
+### Project Story, Knowledge Map, Audit, and protected evaluation
 
 Every new compilation starts an append-only `projectMemoryRun`. The record identifies the source memory, operation, timestamps, Gemma/model version, prompt version, program version, proposed and accepted page counts, final keep/discard state, and a bounded rationale. Accepted `wikiRevision` rows link back to the run. `projectMemoryCheck` rows store named deterministic outcomes with information, warning, or blocking severity.
 
-The protected patch evaluator checks the page budget, retrieved-candidate boundary, required source-grounded fields, unique targets, and self-link hygiene. A blocking failure converts the proposed patch to an empty patch before persistence. An empty but safe Gemma proposal is also recorded as **No change**, which prevents needless pages without creating manual review work.
+The protected patch evaluator checks the three-page budget, retrieved-candidate boundary, required source-grounded fields, unique targets, and self-link hygiene. It also applies a conservative type-suitability filter and token-overlap similarity gate. A likely equivalent new page is rewritten as an update to a retrieved canonical candidate; equivalent proposals inside one patch are collapsed. A blocking failure converts the proposed patch to an empty patch before persistence. An empty but safe Gemma proposal is also recorded as **No change**, which prevents needless pages without creating manual review work.
 
-After at least one memory is processed in a foreground compilation batch, the read-only linter checks the whole graph. Its connectedness result is informational because separate projects can legitimately form separate components; traceability, revision consistency, canonical uniqueness, and link integrity are stronger structural invariants. The Research History UI provides a chronological log, opens the original source where it still exists, shows accepted before/after patches, exposes all check results, and records reproducibility identifiers. It deliberately stores operational evidence and rationale, not chain-of-thought.
+After at least one memory is processed in a foreground compilation batch, the read-only linter checks the whole graph. Its connectedness result is informational because separate projects can legitimately form separate components; traceability, revision consistency, exact uniqueness, likely semantic uniqueness, and link integrity are stronger structural signals.
+
+The user-facing surface has three modes. **Story** narrates saved-memory-to-page changes and translates failures or no-change runs into plain language. **Map** is a tappable flowchart: solid lines are persisted page links and dotted lines are relationships derived from shared source evidence; an equivalent textual connection list keeps the graph accessible. **Audit** retains the chronological technical log, original source navigation, accepted before/after patches, check results, and reproducibility identifiers. It stores operational evidence and rationale, not chain-of-thought.
+
+`RememberTests` contains a fixed deterministic quality benchmark covering valid decision/constraint classification, rejection of submission rules misclassified as a project, consolidation into an existing differently titled submission page, and whole-wiki likely-duplicate detection. This measures the protected quality layer without requiring Gemma or device hardware; model-output replay remains a separate physical-device evaluation concern.
 
 Runs that were in progress when the process stopped are marked failed on the next bootstrap. Existing wiki revisions have a null run identifier and remain valid; they naturally predate the Research History migration.
 
@@ -455,6 +459,7 @@ This is an explicit export initiated from the Project Memory menu. It does not e
 8. Turn off Living Wiki from the Memories ellipsis menu. Confirm the Wiki tab disappears and all v1 features still work.
 9. Re-enable it from the same menu and confirm the pages and history return.
 10. Ask a question represented by a wiki page. Verify the response is organized from the compiled page but its visible citations open original memories, not the derived wiki page.
-11. Open **Project Memory → menu → Research History**. Verify the newest integration shows its source, kept/no-change result, checks, model/prompt/program versions, and accepted patch details.
-12. Confirm a batch-level **Project memory check** follows the integration and exposes read-only structural results.
-13. Choose **Export open Markdown**, save the document in Files, and inspect its index, pages, sources, revisions, and Research History section.
+11. Open **Project Memory → menu → Project Story**. Verify **Story** shows the newest source-to-page flow in plain language.
+12. Open **Map**, tap a page node, and verify solid explicit links, dotted shared-source relationships, and the accessible Connections list where applicable.
+13. Open **Audit**. Verify the newest integration shows its source, kept/no-change result, checks, model/prompt/program versions, and accepted patch details. Run **Check project memory quality** from Story and confirm a new read-only health-check chapter appears.
+14. Choose **Export open Markdown**, save the document in Files, and inspect its index, pages, sources, revisions, and Research History section.

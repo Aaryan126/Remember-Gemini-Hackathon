@@ -55,7 +55,7 @@ struct LivingWikiView: View {
                         NavigationLink {
                             ResearchHistoryView(viewModel: viewModel)
                         } label: {
-                            Label("Research History", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            Label("Project Story", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
                         }
 
                         Button("Export open Markdown", systemImage: "square.and.arrow.up") {
@@ -219,7 +219,7 @@ private struct WikiPageRow: View {
     }
 }
 
-private struct LivingWikiPageDetailView: View {
+struct LivingWikiPageDetailView: View {
     let pageID: UUID
     let viewModel: LibraryViewModel
 
@@ -438,8 +438,8 @@ private struct LivingWikiInfoView: View {
                         .foregroundStyle(.secondary)
                 }
                 Section {
-                    Label("Research History stays inspectable", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    Text("Every new run records its source, before and after text, model and prompt versions, checks, and why the proposed patch was kept or discarded. It stores evidence and decisions, not hidden chain-of-thought.")
+                    Label("Project Story stays inspectable", systemImage: "text.book.closed.fill")
+                    Text("Story explains how saved items changed the project, Map visualizes connections, and Audit records before-and-after text, versions, checks, and why a patch was kept or discarded. Remember stores evidence and decisions, not hidden chain-of-thought.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -455,7 +455,7 @@ private struct LivingWikiInfoView: View {
     }
 }
 
-private extension WikiChangeKind {
+extension WikiChangeKind {
     var systemImage: String {
         switch self {
         case .introduced: "plus.circle.fill"

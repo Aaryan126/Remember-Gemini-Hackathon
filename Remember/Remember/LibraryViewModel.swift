@@ -287,6 +287,23 @@ final class LibraryViewModel {
         }
     }
 
+    func projectMemoryPageSnapshots() async -> [WikiPageSnapshot] {
+        do {
+            return try await livePipeline().projectMemoryPageSnapshots()
+        } catch {
+            errorMessage = Self.message(for: error)
+            return []
+        }
+    }
+
+    func runProjectMemoryCheck() async {
+        do {
+            try await livePipeline().runProjectMemoryLint()
+        } catch {
+            errorMessage = Self.message(for: error)
+        }
+    }
+
     func projectMemoryExportDocument() async -> ProjectMemoryExportDocument? {
         do {
             return try await livePipeline().projectMemoryExportDocument()
