@@ -14,7 +14,7 @@ struct ContentView: View {
             if viewModel.livingWikiEnabled {
                 LivingWikiView(viewModel: viewModel)
                     .tabItem {
-                        Label("Wiki", systemImage: "books.vertical.fill")
+                        Label("Project", systemImage: "books.vertical.fill")
                     }
             }
 
@@ -85,13 +85,13 @@ private struct MemoryLibraryView: View {
                     }
                     Menu("Remember experience", systemImage: "ellipsis.circle") {
                         Toggle(
-                            "Living Wiki",
+                            "Project Memory",
                             isOn: Binding(
                                 get: { viewModel.livingWikiEnabled },
                                 set: { viewModel.setLivingWikiEnabled($0) }
                             )
                         )
-                        Text("Turn this off to return to the v1 experience. Wiki data is preserved.")
+                        Text("Turn this off to return to the v1 experience. Project pages and history are preserved.")
                     }
                 }
             }
@@ -164,11 +164,6 @@ private struct MemoryLibraryView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                isSearchPresented = false
-            }
-        )
         .refreshable {
             await viewModel.synchronize()
         }
@@ -218,9 +213,9 @@ private struct MemoryLibraryView: View {
 
     private var emptyLibrary: some View {
         ContentUnavailableView {
-            Label("Start remembering", systemImage: "sparkles.rectangle.stack")
+            Label("Save your first memory", systemImage: "sparkles.rectangle.stack")
         } description: {
-            Text("Share something from another app or record a voice memory. It stays on your iPhone and is organized here.")
+            Text("From any app, tap Share and choose Remember to save a screenshot, photo, link, PDF, or text. You can also record a voice memory here. Everything stays on this iPhone.")
         } actions: {
             Button("Record Voice Memory", systemImage: "mic.fill") {
                 showsVoiceCapture = true

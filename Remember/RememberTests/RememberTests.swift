@@ -43,6 +43,43 @@ struct RememberTests {
         })
     }
 
+    @Test func askSuggestionsUseProjectMemoryPagesBeforeFallbacks() {
+        let now = Date()
+        let pages = [
+            wikiPage(
+                kind: .project,
+                title: "Remember iOS App",
+                summary: "A private project memory.",
+                aliases: [],
+                updatedAt: now
+            ),
+            wikiPage(
+                kind: .openQuestion,
+                title: "Model delivery",
+                summary: "How the model should reach the phone.",
+                aliases: [],
+                updatedAt: now
+            ),
+            wikiPage(
+                kind: .constraint,
+                title: "iPhone memory ceiling",
+                summary: "Inference must remain below the device limit.",
+                aliases: [],
+                updatedAt: now
+            ),
+        ]
+
+        let questions = AskSuggestionBuilder.questions(for: pages)
+
+        #expect(questions.count == 3)
+        #expect(questions[0].contains("Remember iOS App"))
+        #expect(questions[1].contains("Model delivery"))
+        #expect(questions[2].contains("iPhone memory ceiling"))
+        #expect(AskSuggestionBuilder.questions(for: [], limit: 1) == [
+            "What are the most important project decisions?"
+        ])
+    }
+
     @Test func savesImageAndMetadataToCaptureInbox() throws {
         let container = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: container) }

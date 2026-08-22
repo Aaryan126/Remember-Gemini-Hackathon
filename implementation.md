@@ -223,7 +223,7 @@ Processing is deliberately sequential to avoid loading multiple multimodal gener
 
 The `isSynchronizing` guard prevents overlapping foreground and view lifecycle tasks.
 
-`ContentView` is a five-tab shell while Project Memory is enabled: **Memories**, **Wiki**, **Ask**, **Organize**, and **Privacy**. Disabling Living Wiki restores the original four-tab v1 shell. The Memories tab remains a reverse-chronological, two-column visual library. It includes:
+`ContentView` is a five-tab shell while Project Memory is enabled: **Memories**, **Project**, **Ask**, **Organize**, and **Privacy**. Disabling Project Memory restores the original four-tab v1 shell. The Memories tab remains a reverse-chronological, two-column visual library. It includes:
 
 - an always-visible search field with instant exact matching and explicit Gemma semantic submission;
 - horizontally scrollable type, date, and tag filters with a one-tap clear action;
@@ -233,7 +233,8 @@ The `isSynchronizing` guard prevents overlapping foreground and view lifecycle t
 - a persistent on-device/lock label;
 - pull-to-refresh and foreground inbox pickup;
 - navigation to a memory detail view;
-- interactive keyboard dismissal when scrolling, background-tap dismissal in chat and search results, and an explicit keyboard Done action in editable forms.
+- interactive keyboard dismissal when scrolling, background-tap dismissal in chat, and an explicit keyboard Done action in editable forms;
+- explicit first-capture instructions covering screenshots, photos, links, PDFs, text, and voice.
 - a microphone action that opens explicit voice recording and permission states.
 
 `MemoryDetailView` shows the original, generated summary, tags, OCR disclosure, timestamps, storage location, and model version. Title, summary, and comma-separated tags are editable. Failed analysis can be retried. Delete uses confirmation and removes both the SQLite record and original library file.
@@ -357,8 +358,8 @@ Remember now has an additive, reversible Living Wiki layer inspired by Karpathy'
 
 The original experience remains available without restoring files or migrating the database:
 
-1. In **Memories**, open the trailing ellipsis menu and turn off **Living Wiki**; or open **Privacy → App experience** and turn it off there.
-2. The Wiki tab disappears and Remember returns to the v1 tabs and behavior: Memories, Ask, Organize, and Privacy.
+1. In **Memories**, open the trailing ellipsis menu and turn off **Project Memory**; or open **Privacy → App experience** and turn it off there.
+2. The Project tab disappears and Remember returns to the v1 tabs and behavior: Memories, Ask, Organize, and Privacy.
 3. Existing memories, search records, collections, chat behavior, and the capture pipeline are unchanged.
 4. Wiki pages and revision history remain stored locally. Re-enabling the switch restores them immediately.
 
@@ -451,16 +452,16 @@ This is an explicit export initiated from the Project Memory menu. It does not e
 ### Living Wiki physical-device acceptance test
 
 1. Run the **Remember** scheme on the physical iPhone.
-2. Open **Privacy → App experience** and confirm **Living Wiki** is enabled.
-3. Open the Wiki tab. Existing analyzed memories appear briefly in the compiler backlog and Remember automatically processes them one at a time without a compile button.
+2. Open **Privacy → App experience** and confirm **Project Memory** is enabled.
+3. Open the Project tab. Existing analyzed memories appear briefly in the compiler backlog and Remember automatically processes them one at a time without a compile button.
 4. Keep the app foregrounded during compilation. Open a generated page and verify its type, summary, source memory, and current synthesis.
 5. Save another memory about the same project or concept, return to Remember, and let both normal analysis and wiki compilation finish.
 6. Reopen the page and confirm the revision number increased, the second source is cited, and **See what changed** shows the previous and current synthesis.
 7. If the second source conflicts, verify the page shows **Contradiction found** rather than silently erasing the earlier state.
-8. Turn off Living Wiki from the Memories ellipsis menu. Confirm the Wiki tab disappears and all v1 features still work.
+8. Turn off Project Memory from the Memories ellipsis menu. Confirm the Project tab disappears and all v1 features still work.
 9. Re-enable it from the same menu and confirm the pages and history return.
 10. Ask a question represented by a wiki page. Verify the response is organized from the compiled page but its visible citations open original memories, not the derived wiki page.
-11. Open **Project Memory → menu → Project Story**. Verify **Story** shows the newest source-to-page flow in plain language.
+11. Open **Project → Open Project Story**. Verify **Story** shows the newest source-to-page flow in plain language.
 12. Open **Map**, tap a page node, and verify solid explicit links, dotted shared-source relationships, and the accessible Connections list where applicable.
 13. Open **Audit**. Verify the newest integration shows its source, kept/no-change result, checks, model/prompt/program versions, and accepted patch details. Run **Check project memory quality** from Story and confirm a new read-only health-check chapter appears.
 14. Choose **Export open Markdown**, save the document in Files, and inspect its index, pages, sources, revisions, and Research History section.

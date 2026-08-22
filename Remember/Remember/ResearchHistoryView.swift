@@ -217,7 +217,7 @@ private struct ProjectStoryCard: View {
 
     private var storyTitle: String {
         if snapshot.run.operation == .lint {
-            return snapshot.run.status == .attention ? "Quality check found something to review" : "Project memory passed its quality check"
+            return snapshot.run.status == .attention ? "Project memory noticed a possible overlap" : "Project memory passed its quality check"
         }
         switch snapshot.run.status {
         case .kept: return snapshot.changes.count == 1 ? "Project knowledge changed" : "Several project pages evolved"
@@ -242,7 +242,7 @@ private struct ProjectStoryCard: View {
     private var emptyResultLabel: String {
         switch snapshot.run.status {
         case .discarded: "Kept the existing project memory unchanged"
-        case .attention: "Review suggested; nothing was changed"
+        case .attention: "Both source histories were preserved"
         case .failed: "The original saved item is still safe"
         default: snapshot.run.status.label
         }

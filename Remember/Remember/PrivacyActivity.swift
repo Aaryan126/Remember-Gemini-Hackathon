@@ -14,7 +14,7 @@ nonisolated enum LocalAIActivityKind: String, Codable, DatabaseValueConvertible,
         case .search: "Semantic search"
         case .chat: "Ask Remember"
         case .transcription: "Voice transcription"
-        case .wikiCompilation: "Living Wiki compilation"
+        case .wikiCompilation: "Project Memory compilation"
         }
     }
 
@@ -62,7 +62,7 @@ nonisolated struct LocalAIActivity: Codable, Equatable, FetchableRecord, Identif
 nonisolated enum RememberNetworkPolicy {
     static let outboundRequestsImplemented = false
 
-    static let summary = "Remember has no application networking path. Captures, voice transcription, OCR, search, Living Wiki compilation, and Gemma inference use local files and on-device frameworks."
+    static let summary = "Remember has no application networking path. Captures, voice transcription, OCR, search, Project Memory compilation, and Gemma inference use local files and on-device frameworks."
 
     static let limitation = "iOS does not provide an app with a complete live packet log for itself. This screen reports Remember's implemented behavior and local AI audit records, not device-wide network traffic."
 }

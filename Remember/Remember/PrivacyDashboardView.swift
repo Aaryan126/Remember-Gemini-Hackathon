@@ -61,13 +61,13 @@ struct PrivacyDashboardView: View {
 
                 Section("App experience") {
                     Toggle(
-                        "Living Wiki",
+                        "Project Memory",
                         isOn: Binding(
                             get: { viewModel.livingWikiEnabled },
                             set: { viewModel.setLivingWikiEnabled($0) }
                         )
                     )
-                    Text("Turn this off to return to the original v1 memories, search, chat, organize, and privacy experience. Wiki pages and history remain stored locally and can be re-enabled at any time.")
+                    Text("Turn this off to return to the original v1 memories, search, chat, organize, and privacy experience. Project pages and history remain stored locally and can be re-enabled at any time.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -77,7 +77,7 @@ struct PrivacyDashboardView: View {
                         ContentUnavailableView(
                             "No AI activity yet",
                             systemImage: "clock.badge.checkmark",
-                            description: Text("Transcription, analysis, wiki compilation, local semantic search, and Ask Remember operations will appear here.")
+                            description: Text("Transcription, analysis, Project Memory compilation, local semantic search, and Ask Remember operations will appear here.")
                         )
                     } else {
                         ForEach(viewModel.activities) { activity in

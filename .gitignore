@@ -237,3 +237,6 @@ fastlane/test_output/
 .agents/local/
 .codex/local/
 .claude/settings.local.json
+
+# MD files
+DEMO_SCRIPT.md

@@ -79,13 +79,13 @@ struct AskRememberView: View {
                 .accessibilityHidden(true)
             Text("Ask your memories")
                 .font(.title2.bold())
-            Text("Gemma searches your Living Wiki first, verifies its answer against the original memories, and shows the sources it used. Nothing is sent off this iPhone.")
+            Text("Gemma searches your Project Memory first, verifies its answer against the original saved items, and shows the sources it used. Nothing is sent off this iPhone.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 10) {
-                suggestion("Where is my next lecture?")
-                suggestion("What did I save about the hackathon?")
-                suggestion("Find the restaurant I wanted to try")
+                ForEach(AskSuggestionBuilder.questions(for: viewModel.wikiPages), id: \.self) { question in
+                    suggestion(question)
+                }
             }
             .frame(maxWidth: 420)
         }
@@ -96,6 +96,7 @@ struct AskRememberView: View {
     private func suggestion(_ text: String) -> some View {
         Button {
             viewModel.chatInput = text
+            isComposerFocused = true
         } label: {
             Label(text, systemImage: "sparkles")
                 .font(.subheadline.weight(.medium))
@@ -137,6 +138,54 @@ struct AskRememberView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+}
+
+nonisolated enum AskSuggestionBuilder {
+    private static let fallbackQuestions = [
+        "What are the most important project decisions?",
+        "Which constraints should I know about?",
+        "What is still unresolved?",
+    ]
+
+    static func questions(for pages: [WikiPage], limit: Int = 3) -> [String] {
+        guard limit > 0 else { return [] }
+
+        var questions: [String] = []
+        func append(_ question: String) {
+            guard questions.count < limit,
+                  !questions.contains(where: { $0.caseInsensitiveCompare(question) == .orderedSame }) else {
+                return
+            }
+            questions.append(question)
+        }
+
+        if let page = pages.first(where: { $0.kind == .project }) {
+            append("Give me the latest on \(quotedSubject(page.title))")
+        }
+        if let page = pages.first(where: { $0.kind == .openQuestion }) {
+            append("What is unresolved about \(quotedSubject(page.title))?")
+        }
+        if let page = pages.first(where: { $0.kind == .decision }) {
+            append("Why did we choose \(quotedSubject(page.title))?")
+        }
+        if let page = pages.first(where: { $0.kind == .constraint }) {
+            append("How does \(quotedSubject(page.title)) affect the project?")
+        }
+
+        for page in pages where questions.count < limit {
+            append("Summarize \(quotedSubject(page.title))")
+        }
+        for fallback in fallbackQuestions where questions.count < limit {
+            append(fallback)
+        }
+        return questions
+    }
+
+    private static func quotedSubject(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bounded = trimmed.count > 48 ? String(trimmed.prefix(47)) + "…" : trimmed
+        return "“\(bounded)”"
     }
 }
 

@@ -23,8 +23,9 @@ The initial audience is solo founders, indie hackers, designers, and makers who 
 - Uses Apple Vision OCR and local Gemma 4 E2B through MLX for titles, summaries, tags, image understanding, wiki compilation, query expansion, and grounded answers.
 - Uses a bundled BGE Micro model for local semantic retrieval.
 - Provides a searchable visual memory feed, filters, collections, editable metadata, and source-citing chat.
-- Compiles durable knowledge into a Living Wiki using a project-specific schema.
-- Presents project evolution through **Project Story**, a tappable source-to-page timeline, and **Knowledge Map**, while retaining the complete technical ledger under **Audit**.
+- Compiles durable knowledge into **Project Memory**, a Living Wiki with a project-specific schema.
+- Surfaces project evolution through the prominent **Project Story** entry point, a tappable source-to-page timeline, and **Knowledge Map**, while retaining the complete technical ledger under **Audit**.
+- Suggests Ask questions from the user's actual Project Memory pages instead of relying only on generic examples.
 - Exports the derived project memory and chronological ledger as portable Markdown.
 
 ## System at a glance

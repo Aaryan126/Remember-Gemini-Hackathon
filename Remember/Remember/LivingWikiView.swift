@@ -43,11 +43,6 @@ struct LivingWikiView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    isSearchPresented = false
-                }
-            )
             .navigationTitle("Project Memory")
             .searchable(text: Binding(
                 get: { viewModel.wikiSearchQuery },
@@ -162,6 +157,23 @@ struct LivingWikiView: View {
                     }
                 }
                 .disabled(viewModel.isCompilingWiki)
+            }
+
+            NavigationLink {
+                ResearchHistoryView(viewModel: viewModel)
+            } label: {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Open Project Story")
+                            .font(.subheadline.weight(.semibold))
+                        Text("See how saved sources changed your project knowledge.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                        .foregroundStyle(.blue)
+                }
             }
         } footer: {
             Text("Remember builds automatically, one memory at a time, while the app is open. Your original saved items are never changed.")
@@ -428,7 +440,7 @@ private struct LivingWikiInfoView: View {
                 }
                 Section {
                     Label("Your memories stay original", systemImage: "lock.doc.fill")
-                    Text("The Living Wiki is a separate layer. Gemma reads saved memories but never rewrites them.")
+                    Text("Project Memory is a separate layer. Gemma reads saved memories but never rewrites them.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
