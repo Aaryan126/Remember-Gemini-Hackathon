@@ -366,11 +366,9 @@ nonisolated enum WikiCompilationParser {
     }
 
     static func parse(response: String, allowedCandidateIDs: Set<UUID>) throws -> WikiCompilationProposal {
-        guard let opening = response.firstIndex(of: "{"),
-              let closing = response.lastIndex(of: "}"),
-              opening <= closing,
-              let payload = try? JSONDecoder().decode(Payload.self, from: Data(response[opening...closing].utf8))
-        else {
+        guard let payload = jsonObjects(in: response).lazy.compactMap({ data in
+            try? JSONDecoder().decode(Payload.self, from: data)
+        }).first else {
             throw LivingWikiError.invalidModelResponse
         }
 
@@ -409,6 +407,42 @@ nonisolated enum WikiCompilationParser {
             )
         }
         return WikiCompilationProposal(pages: pages)
+    }
+
+    private static func jsonObjects(in response: String) -> [Data] {
+        var objects: [Data] = []
+        var start: String.Index?
+        var depth = 0
+        var isInsideString = false
+        var isEscaped = false
+
+        for index in response.indices {
+            let character = response[index]
+            if isInsideString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    isInsideString = false
+                }
+                continue
+            }
+
+            if character == "\"" {
+                isInsideString = true
+            } else if character == "{" {
+                if depth == 0 { start = index }
+                depth += 1
+            } else if character == "}", depth > 0 {
+                depth -= 1
+                if depth == 0, let objectStart = start {
+                    objects.append(Data(response[objectStart...index].utf8))
+                    start = nil
+                }
+            }
+        }
+        return objects
     }
 
     private static func bounded(_ value: String, limit: Int) -> String? {

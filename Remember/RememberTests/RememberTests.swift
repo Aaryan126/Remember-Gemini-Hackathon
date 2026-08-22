@@ -653,6 +653,26 @@ struct RememberTests {
         #expect(proposal.pages.first?.candidateID == allowedID)
     }
 
+    @Test func livingWikiParserFindsBalancedPayloadAmongProseAndBraces() throws {
+        let candidateID = UUID()
+        let response = """
+            I considered this shape first: {not valid JSON}.
+            ```json
+            {"pages":[{"candidate_id":"\(candidateID.uuidString)","type":"decision","title":"Use local JSON","summary":"Keep {structured} output on-device, even when a quoted brace appears.","aliases":[],"effect":"updated","rationale":"The source confirms the local boundary.","related_candidate_ids":[]}]}
+            ```
+            Diagnostic object: {"ignored":true}
+            """
+
+        let proposal = try WikiCompilationParser.parse(
+            response: response,
+            allowedCandidateIDs: [candidateID]
+        )
+
+        #expect(proposal.pages.count == 1)
+        #expect(proposal.pages.first?.candidateID == candidateID)
+        #expect(proposal.pages.first?.summary.contains("{structured}") == true)
+    }
+
     @Test func livingWikiCompilationIsVersionedLinkedAndIdempotentlyQueued() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

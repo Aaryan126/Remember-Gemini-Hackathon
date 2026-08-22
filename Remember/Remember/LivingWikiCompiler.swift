@@ -11,7 +11,7 @@ nonisolated protocol LivingWikiCompiling: Sendable {
 }
 
 actor GemmaLivingWikiCompiler: LivingWikiCompiling {
-    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v2"
+    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v3"
     nonisolated static let promptVersion = ProjectMemoryProgram.current.promptVersion
 
     nonisolated private static let cacheLimit = 20 * 1024 * 1024
@@ -36,11 +36,20 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
                 generateParameters: GenerateParameters(maxTokens: 760, temperature: 0),
                 processing: .init(resize: nil)
             )
+            let allowedCandidateIDs = Set(candidates.map(\.page.id))
             let response = try await session.respond(to: Self.prompt(memory: memory, candidates: candidates))
-            return try WikiCompilationParser.parse(
-                response: response,
-                allowedCandidateIDs: Set(candidates.map(\.page.id))
-            )
+            do {
+                return try WikiCompilationParser.parse(
+                    response: response,
+                    allowedCandidateIDs: allowedCandidateIDs
+                )
+            } catch LivingWikiError.invalidModelResponse {
+                let repairedResponse = try await session.respond(to: Self.repairPrompt)
+                return try WikiCompilationParser.parse(
+                    response: repairedResponse,
+                    allowedCandidateIDs: allowedCandidateIDs
+                )
+            }
         }
     }
 
@@ -85,8 +94,10 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
             - If evidence conflicts with a current summary, use effect "contradicted" and describe both sides without choosing one.
             - Use effect "strengthened" when it adds support, "updated" when it adds or revises information, "related" for a useful connection, and "introduced" only for new pages.
             - Return at most 5 high-value pages. Returning zero pages is valid.
+            - Keep each title under 12 words, each summary under 90 words, each rationale under 30 words, and aliases to at most 4.
             - related_candidate_ids may contain only exact candidate IDs and should express useful cross-links.
             - Keep every claim traceable to the source memory.
+            - Return compact JSON and always finish every closing quote, bracket, and brace before the token limit.
 
             Return only one JSON object with this exact shape:
             {"pages":[{"candidate_id":null,"type":"project","title":"Short title","summary":"Current integrated summary","aliases":["alternate name"],"effect":"introduced","rationale":"What this memory changed and why","related_candidate_ids":[]}]}
@@ -104,4 +115,11 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
             \(candidateText.isEmpty ? "None. Create only pages clearly justified by the source." : candidateText)
             """
     }
+
+    nonisolated private static let repairPrompt = """
+        Your previous response was not valid as the required JSON object. Correct it now using the same source and candidate IDs.
+        Return only compact JSON in the exact requested shape—no Markdown or explanation.
+        Keep at most 3 highest-value pages, summaries under 70 words, rationales under 20 words, aliases to at most 3, and finish every closing bracket and brace.
+        If no safe durable page can be expressed, return exactly {"pages":[]}.
+        """
 }

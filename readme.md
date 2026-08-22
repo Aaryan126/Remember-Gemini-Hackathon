@@ -68,7 +68,7 @@ The current program is versioned as `private-project-memory-v1`. It asks the com
 | Open Question | An unresolved issue that affects later work or decisions |
 | Reference | Durable supporting knowledge that does not fit another type |
 
-Every source memory is compared with at most eight locally retrieved candidate pages. Gemma may propose at most five changes. Candidate identifiers and cross-links must come from that bounded set.
+Every source memory is compared with at most eight locally retrieved candidate pages. Gemma may propose at most five concise changes. Candidate identifiers and cross-links must come from that bounded set. If Gemma's first response is malformed, one bounded on-device repair turn asks it to emit compact JSON; deterministic validation still controls what can be written.
 
 ### Protected evaluator
 

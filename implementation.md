@@ -265,6 +265,7 @@ The `isSynchronizing` guard prevents overlapping foreground and view lifecycle t
 - round-robin recovery of original wiki evidence memories for citations.
 - Private Project Memory schema/version exposure;
 - protected patch keep/discard behavior, including duplicate-target rejection;
+- balanced compiler JSON extraction when valid payloads are surrounded by prose, fences, or unrelated brace objects;
 - deterministic whole-wiki lint failures and healthy invariants;
 - append-only run/check/revision linkage and open Markdown projection content.
 
@@ -296,7 +297,7 @@ xcodebuild -quiet \
   build-for-testing
 ```
 
-Package resolution, the app build, compilation of the test bundle, and signed physical-device builds completed successfully. After adding Private Project Memory, the unsigned generic iOS build completed successfully and all 33 deterministic unit tests passed on an iOS 26.5 simulator; simulator tests inject a fake embedder and do not claim to validate real Metal inference, Gemma, or live microphone transcription. The original full checkpoint reproduced an iOS `EXC_RESOURCE (RESOURCE_TYPE_MEMORY)` high-watermark stop at approximately 3.38 GiB. Inspection found approximately 2,483 MiB of language tensors, 320 MiB of vision tensors, and 583 MiB of unused audio tensors. The generated vision-only checkpoint was independently opened with `safetensors` 0.7.0 and contained 1,757 tensors: 1,096 language tensors, 661 vision tensors, and zero audio tensors. The optimized 2.9 GB app was built after enabling Increased Memory Limit, and `codesign -d --entitlements -` confirmed the signed executable contains both `com.apple.developer.kernel.increased-memory-limit = true` and the Remember App Group. A simulator is not an equivalent inference test for model execution.
+Package resolution, the app build, compilation of the test bundle, and signed physical-device builds completed successfully. After adding the compiler JSON recovery boundary, the unsigned generic iOS build completed successfully and all 34 deterministic unit tests passed on an iOS 26.5 simulator; simulator tests inject a fake embedder and do not claim to validate real Metal inference, Gemma, or live microphone transcription. The original full checkpoint reproduced an iOS `EXC_RESOURCE (RESOURCE_TYPE_MEMORY)` high-watermark stop at approximately 3.38 GiB. Inspection found approximately 2,483 MiB of language tensors, 320 MiB of vision tensors, and 583 MiB of unused audio tensors. The generated vision-only checkpoint was independently opened with `safetensors` 0.7.0 and contained 1,757 tensors: 1,096 language tensors, 661 vision tensors, and zero audio tensors. The optimized 2.9 GB app was built after enabling Increased Memory Limit, and `codesign -d --entitlements -` confirmed the signed executable contains both `com.apple.developer.kernel.increased-memory-limit = true` and the Remember App Group. A simulator is not an equivalent inference test for model execution.
 
 ## Physical iPhone acceptance test
 
@@ -420,7 +421,9 @@ BGE Micro is English-focused. Its small size is the right fit for the current En
 
 ### Private Project Memory program
 
-`ProjectMemoryProgram` is a fixed, versioned policy boundary rather than an unbounded agent prompt. Version `private-project-memory-v1` states the objective and exposes eight page types in both the compiler prompt and product UI: project, decision, constraint, experiment, feedback, person, open question, and reference knowledge. The compiler prompt is independently versioned as `project-memory-compiler-v2`.
+`ProjectMemoryProgram` is a fixed, versioned policy boundary rather than an unbounded agent prompt. Version `private-project-memory-v1` states the objective and exposes eight page types in both the compiler prompt and product UI: project, decision, constraint, experiment, feedback, person, open question, and reference knowledge. The compiler prompt is independently versioned as `project-memory-compiler-v3`.
+
+The v3 boundary asks for concise fields and complete closing delimiters. The parser extracts balanced JSON objects while respecting quoted braces and escapes, so Markdown fences or surrounding prose cannot corrupt an otherwise valid object. If the first output still cannot be decoded, the same local Gemma session receives one bounded repair instruction and must return compact JSON (or `{"pages":[]}`). Candidate allowlisting, field bounds, patch checks, and transactional persistence run after repair exactly as they do for a first-pass response; raw malformed output is never logged or persisted.
 
 This schema makes the product opinionated about project continuity while remaining broad enough for founders, makers, and creative work. The legacy `concept` database value remains valid and is presented as Reference Knowledge, so existing installs migrate without rewriting pages.
 
