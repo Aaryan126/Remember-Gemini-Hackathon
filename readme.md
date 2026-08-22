@@ -27,7 +27,23 @@ The initial audience is solo founders, indie hackers, designers, and makers who 
 - Presents project evolution through **Project Story**, a tappable source-to-page timeline, and **Knowledge Map**, while retaining the complete technical ledger under **Audit**.
 - Exports the derived project memory and chronological ledger as portable Markdown.
 
-## Architecture
+## System at a glance
+
+Remember has one simple loop: save useful project context, understand it privately on the iPhone, organize it into durable memory, and bring it back when needed.
+
+```mermaid
+flowchart LR
+    A[Save<br/>screenshots · links · PDFs · voice · text]
+    B[Understand locally<br/>on-device AI]
+    C[Organize<br/>private project memory]
+    D[Use it<br/>search · ask · review · export]
+
+    A --> B --> C --> D
+```
+
+Captured originals stay private and authoritative throughout this flow. The app builds searchable memories and project knowledge around them without uploading or rewriting them.
+
+## Detailed architecture
 
 ```mermaid
 flowchart TD

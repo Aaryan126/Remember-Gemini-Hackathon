@@ -457,7 +457,9 @@ nonisolated enum ProjectMemoryLinter {
             for rightIndex in pages.indices where rightIndex > leftIndex {
                 let left = pages[leftIndex]
                 let right = pages[rightIndex]
-                if ProjectMemorySimilarity.similarity(left: left, right: right) >= 0.55 {
+                // Lint is read-only, so it deliberately favors recall. The write
+                // gate above remains stricter before it redirects a live patch.
+                if ProjectMemorySimilarity.similarity(left: left, right: right) >= 0.45 {
                     likelyDuplicatePairs.append((left, right))
                 }
             }
