@@ -32,13 +32,19 @@ The initial audience is solo founders, indie hackers, designers, and makers who 
 Remember has one simple loop: save useful project context, understand it privately on the iPhone, organize it into durable memory, and bring it back when needed.
 
 ```mermaid
-flowchart LR
-    A[Save<br/>screenshots · links · PDFs · voice · text]
-    B[Understand locally<br/>on-device AI]
-    C[Organize<br/>private project memory]
-    D[Use it<br/>search · ask · review · export]
+flowchart TD
+    A[Capture<br/>screenshots · links · PDFs · voice · text]
+    B[Secure local handoff<br/>App Group inbox]
+    C[Extract locally<br/>Vision OCR · Speech · PDF text]
+    D[Understand with Gemma<br/>title · summary · tags]
+    E[(Private memory library<br/>originals + SQLite)]
+    F[Build search index<br/>BGE vectors + exact text]
+    G[Build project memory<br/>pages · sources · revisions]
+    H[Use your memory<br/>search · ask · story · map · export]
 
-    A --> B --> C --> D
+    A --> B --> C --> D --> E
+    E --> F --> H
+    E --> G --> H
 ```
 
 Captured originals stay private and authoritative throughout this flow. The app builds searchable memories and project knowledge around them without uploading or rewriting them.
