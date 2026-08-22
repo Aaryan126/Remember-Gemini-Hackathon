@@ -11,7 +11,8 @@ nonisolated protocol LivingWikiCompiling: Sendable {
 }
 
 actor GemmaLivingWikiCompiler: LivingWikiCompiling {
-    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-living-wiki-v1"
+    nonisolated static let modelVersion = "gemma-4-e2b-it-4bit-project-memory-v2"
+    nonisolated static let promptVersion = ProjectMemoryProgram.current.promptVersion
 
     nonisolated private static let cacheLimit = 20 * 1024 * 1024
     private let executionGate: GemmaExecutionGate
@@ -44,6 +45,7 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
     }
 
     nonisolated private static func prompt(memory: MemoryItem, candidates: [WikiCandidate]) -> String {
+        let program = ProjectMemoryProgram.current
         let candidateText = candidates.map { candidate in
             let page = candidate.page
             return """
@@ -65,18 +67,19 @@ actor GemmaLivingWikiCompiler: LivingWikiCompiling {
         .joined(separator: "\n")
 
         return """
-            You maintain a private living wiki from one saved memory. The source is evidence; do not use outside knowledge.
+            You maintain a private project memory from one saved item. The source is evidence; do not use outside knowledge.
+
+            PROGRAM: \(program.name)
+            PROGRAM_VERSION: \(program.version)
+            OBJECTIVE: \(program.objective)
 
             Decide which durable pages this memory should introduce or update. Allowed types:
-            - project: an ongoing effort with an objective
-            - concept: a reusable idea or topic
-            - decision: a choice that was made or seriously proposed
-            - constraint: a limiting requirement, risk, dependency, or boundary
-            - open_question: an unresolved question that matters later
+            \(program.promptTypeList)
 
             Rules:
             - Prefer an existing candidate when it represents the same durable subject, even if wording differs.
             - Use candidate_id only by copying an exact CANDIDATE_ID below. Otherwise use null to create a page.
+            - Prefer project-specific decisions, constraints, experiments, feedback, people, and open questions over generic concepts.
             - Do not make pages for incidental objects, generic words, or details useful only inside this memory.
             - A page summary must integrate the new evidence with its current summary. Preserve still-valid information.
             - If evidence conflicts with a current summary, use effect "contradicted" and describe both sides without choosing one.

@@ -179,6 +179,45 @@ actor MemoryStore {
                 table.column("embeddingModel", .text).notNull()
             }
         }
+        migrator.registerMigration("createProjectMemoryResearchHistory") { database in
+            try database.create(table: ProjectMemoryRun.databaseTableName) { table in
+                table.column("id", .text).primaryKey()
+                table.column("operation", .text).notNull().indexed()
+                table.column("memoryID", .text)
+                    .references(MemoryItem.databaseTableName, onDelete: .setNull)
+                table.column("startedAt", .datetime).notNull().indexed()
+                table.column("completedAt", .datetime)
+                table.column("status", .text).notNull().indexed()
+                table.column("modelVersion", .text).notNull()
+                table.column("promptVersion", .text).notNull()
+                table.column("programVersion", .text).notNull()
+                table.column("proposedPageCount", .integer).notNull().defaults(to: 0)
+                table.column("acceptedPageCount", .integer).notNull().defaults(to: 0)
+                table.column("rationale", .text).notNull().defaults(to: "")
+            }
+            try database.create(table: ProjectMemoryCheck.databaseTableName) { table in
+                table.column("id", .text).primaryKey()
+                table.column("runID", .text)
+                    .notNull()
+                    .indexed()
+                    .references(ProjectMemoryRun.databaseTableName, onDelete: .cascade)
+                table.column("checkID", .text).notNull()
+                table.column("label", .text).notNull()
+                table.column("severity", .text).notNull()
+                table.column("passed", .boolean).notNull()
+                table.column("message", .text).notNull()
+                table.uniqueKey(["runID", "checkID"])
+            }
+            try database.alter(table: WikiRevision.databaseTableName) { table in
+                table.add(column: "runID", .text)
+                    .references(ProjectMemoryRun.databaseTableName, onDelete: .setNull)
+            }
+            try database.create(
+                index: "wikiRevisionByRun",
+                on: WikiRevision.databaseTableName,
+                columns: ["runID"]
+            )
+        }
         try migrator.migrate(databasePool)
         try fileManager.setAttributes(Self.protectedAttributes, ofItemAtPath: databaseURL.path)
     }
@@ -294,6 +333,108 @@ actor MemoryStore {
                 .order(Column("startedAt").desc)
                 .limit(max(1, min(limit, 500)))
                 .fetchAll(database)
+        }
+    }
+
+    func recoverInterruptedProjectMemoryRuns() async throws {
+        try await databasePool.write { database in
+            try database.execute(
+                sql: """
+                    UPDATE projectMemoryRun
+                    SET status = ?, completedAt = ?, rationale = ?
+                    WHERE status = ?
+                    """,
+                arguments: [
+                    ProjectMemoryRunStatus.failed.rawValue,
+                    Date(),
+                    "The app stopped before this local operation completed.",
+                    ProjectMemoryRunStatus.running.rawValue,
+                ]
+            )
+        }
+    }
+
+    func startProjectMemoryRun(
+        operation: ProjectMemoryRunOperation,
+        memoryID: UUID?,
+        modelVersion: String,
+        promptVersion: String
+    ) async throws -> UUID {
+        let run = ProjectMemoryRun(
+            id: UUID(),
+            operation: operation,
+            memoryID: memoryID,
+            startedAt: Date(),
+            completedAt: nil,
+            status: .running,
+            modelVersion: String(modelVersion.prefix(160)),
+            promptVersion: String(promptVersion.prefix(120)),
+            programVersion: ProjectMemoryProgram.current.version,
+            proposedPageCount: 0,
+            acceptedPageCount: 0,
+            rationale: ""
+        )
+        try await databasePool.write { database in
+            try run.insert(database)
+        }
+        return run.id
+    }
+
+    func finishProjectMemoryRun(
+        id: UUID,
+        status: ProjectMemoryRunStatus,
+        proposedPageCount: Int,
+        acceptedPageCount: Int,
+        rationale: String,
+        checks: [ProjectMemoryCheckDraft]
+    ) async throws {
+        try await databasePool.write { database in
+            try Self.finishProjectMemoryRunRecord(
+                id: id,
+                completion: ProjectMemoryRunCompletion(
+                    status: status,
+                    proposedPageCount: proposedPageCount,
+                    acceptedPageCount: acceptedPageCount,
+                    rationale: rationale,
+                    checks: checks
+                ),
+                in: database
+            )
+        }
+    }
+
+    func fetchProjectMemoryHistory(limit: Int = 200) async throws -> [ProjectMemoryRunSnapshot] {
+        try await databasePool.read { database in
+            let runs = try ProjectMemoryRun
+                .order(Column("startedAt").desc)
+                .limit(max(1, min(limit, 2_000)))
+                .fetchAll(database)
+            return try runs.map { run in
+                let memoryTitle = try run.memoryID
+                    .flatMap { try MemoryItem.fetchOne(database, key: $0)?.displayTitle }
+                let checks = try ProjectMemoryCheck
+                    .filter(Column("runID") == run.id)
+                    .order(Column("checkID").asc)
+                    .fetchAll(database)
+                let revisions = try WikiRevision
+                    .filter(Column("runID") == run.id)
+                    .order(Column("createdAt").asc)
+                    .fetchAll(database)
+                let changes = try revisions.compactMap { revision -> ProjectMemoryRevisionChange? in
+                    guard let page = try WikiPage.fetchOne(database, key: revision.pageID) else { return nil }
+                    return ProjectMemoryRevisionChange(
+                        revision: revision,
+                        pageTitle: page.title,
+                        pageKind: page.kind
+                    )
+                }
+                return ProjectMemoryRunSnapshot(
+                    run: run,
+                    memoryTitle: memoryTitle,
+                    checks: checks,
+                    changes: changes
+                )
+            }
         }
     }
 
@@ -652,6 +793,33 @@ actor MemoryStore {
         }
     }
 
+    func fetchProjectMemoryLintInput() async throws -> (
+        pages: [WikiPage],
+        evidence: [WikiEvidence],
+        revisions: [WikiRevision],
+        links: [WikiPageLink]
+    ) {
+        try await databasePool.read { database in
+            (
+                pages: try WikiPage.fetchAll(database),
+                evidence: try WikiEvidence.fetchAll(database),
+                revisions: try WikiRevision.fetchAll(database),
+                links: try WikiPageLink.fetchAll(database)
+            )
+        }
+    }
+
+    func fetchAllWikiPageSnapshots() async throws -> [WikiPageSnapshot] {
+        let pages = try await fetchWikiPages()
+        var snapshots: [WikiPageSnapshot] = []
+        for page in pages {
+            if let snapshot = try await fetchWikiPageSnapshot(id: page.id) {
+                snapshots.append(snapshot)
+            }
+        }
+        return snapshots
+    }
+
     func fetchWikiPageLinks() async throws -> [WikiPageLink] {
         try await databasePool.read { database in
             try WikiPageLink.fetchAll(database)
@@ -751,7 +919,9 @@ actor MemoryStore {
         memoryID: UUID,
         sourceUpdatedAt: Date,
         proposal: WikiCompilationProposal,
-        allowedCandidateIDs: Set<UUID>
+        allowedCandidateIDs: Set<UUID>,
+        runID: UUID? = nil,
+        runCompletion: ProjectMemoryRunCompletion? = nil
     ) async throws {
         try await databasePool.write { database in
             guard let memory = try MemoryItem.fetchOne(database, key: memoryID) else {
@@ -779,6 +949,7 @@ actor MemoryStore {
                     page = existing
                     try Self.insertWikiRevision(
                         page: existing,
+                        runID: runID,
                         memoryID: memoryID,
                         effect: effect,
                         previousSummary: previousSummary,
@@ -802,6 +973,7 @@ actor MemoryStore {
                         effect = .updated
                         try Self.insertWikiRevision(
                             page: existing,
+                            runID: runID,
                             memoryID: memoryID,
                             effect: effect,
                             previousSummary: previousSummary,
@@ -826,6 +998,7 @@ actor MemoryStore {
                         effect = .introduced
                         try Self.insertWikiRevision(
                             page: created,
+                            runID: runID,
                             memoryID: memoryID,
                             effect: effect,
                             previousSummary: nil,
@@ -876,11 +1049,49 @@ actor MemoryStore {
             compilation.errorMessage = nil
             compilation.modelVersion = GemmaLivingWikiCompiler.modelVersion
             try compilation.save(database)
+
+            if let runID, let runCompletion {
+                try Self.finishProjectMemoryRunRecord(
+                    id: runID,
+                    completion: runCompletion,
+                    in: database
+                )
+            }
+        }
+    }
+
+    nonisolated private static func finishProjectMemoryRunRecord(
+        id: UUID,
+        completion: ProjectMemoryRunCompletion,
+        in database: Database
+    ) throws {
+        guard var run = try ProjectMemoryRun.fetchOne(database, key: id) else { return }
+        run.completedAt = Date()
+        run.status = completion.status
+        run.proposedPageCount = max(0, completion.proposedPageCount)
+        run.acceptedPageCount = max(0, completion.acceptedPageCount)
+        run.rationale = String(completion.rationale.prefix(800))
+        try run.update(database)
+
+        _ = try ProjectMemoryCheck
+            .filter(Column("runID") == id)
+            .deleteAll(database)
+        for check in completion.checks {
+            try ProjectMemoryCheck(
+                id: UUID(),
+                runID: id,
+                checkID: String(check.checkID.prefix(100)),
+                label: String(check.label.prefix(120)),
+                severity: check.severity,
+                passed: check.passed,
+                message: String(check.message.prefix(500))
+            ).insert(database)
         }
     }
 
     nonisolated private static func insertWikiRevision(
         page: WikiPage,
+        runID: UUID?,
         memoryID: UUID,
         effect: WikiChangeKind,
         previousSummary: String?,
@@ -890,6 +1101,7 @@ actor MemoryStore {
     ) throws {
         let revision = WikiRevision(
             id: UUID(),
+            runID: runID,
             pageID: page.id,
             memoryID: memoryID,
             revisionNumber: page.revisionNumber,

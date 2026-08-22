@@ -1,8 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LivingWikiView: View {
     let viewModel: LibraryViewModel
     @State private var showsCompilerInfo = false
+    @State private var exportDocument: ProjectMemoryExportDocument?
+    @State private var showsExporter = false
 
     var body: some View {
         NavigationStack {
@@ -14,7 +17,7 @@ struct LivingWikiView: View {
                         ContentUnavailableView {
                             Label("The wiki is ready to grow", systemImage: "leaf.fill")
                         } description: {
-                            Text("Remember automatically turns analyzed memories into projects, concepts, decisions, constraints, and open questions while the app is open.")
+                            Text("Remember automatically turns analyzed memories into durable project knowledge while the app is open.")
                         }
                     }
                 } else if viewModel.filteredWikiPages.isEmpty {
@@ -38,7 +41,7 @@ struct LivingWikiView: View {
                     }
                 }
             }
-            .navigationTitle("Living Wiki")
+            .navigationTitle("Project Memory")
             .searchable(text: Binding(
                 get: { viewModel.wikiSearchQuery },
                 set: { viewModel.wikiSearchQuery = $0 }
@@ -48,8 +51,22 @@ struct LivingWikiView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu("Wiki options", systemImage: "ellipsis.circle") {
-                        Button("How Living Wiki works", systemImage: "info.circle") {
+                    Menu("Project Memory options", systemImage: "ellipsis.circle") {
+                        NavigationLink {
+                            ResearchHistoryView(viewModel: viewModel)
+                        } label: {
+                            Label("Research History", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        }
+
+                        Button("Export open Markdown", systemImage: "square.and.arrow.up") {
+                            Task {
+                                guard let document = await viewModel.projectMemoryExportDocument() else { return }
+                                exportDocument = document
+                                showsExporter = true
+                            }
+                        }
+
+                        Button("How Project Memory works", systemImage: "info.circle") {
                             showsCompilerInfo = true
                         }
 
@@ -64,6 +81,17 @@ struct LivingWikiView: View {
             .sheet(isPresented: $showsCompilerInfo) {
                 LivingWikiInfoView()
                     .presentationDetents([.medium, .large])
+            }
+            .fileExporter(
+                isPresented: $showsExporter,
+                document: exportDocument,
+                contentType: ProjectMemoryExportDocument.markdownType,
+                defaultFilename: "Remember-Project-Memory"
+            ) { result in
+                if case .failure(let error) = result {
+                    viewModel.reportProjectMemoryExportFailure(error)
+                }
+                exportDocument = nil
             }
             .safeAreaInset(edge: .bottom) {
                 if let errorMessage = viewModel.errorMessage {
@@ -101,9 +129,9 @@ struct LivingWikiView: View {
                 Label {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(viewModel.wikiPages.count) \(viewModel.wikiPages.count == 1 ? "wiki page" : "wiki pages")")
+                            Text(ProjectMemoryProgram.current.name)
                                 .font(.headline)
-                            Text(statusDescription)
+                            Text("\(viewModel.wikiPages.count) \(viewModel.wikiPages.count == 1 ? "page" : "pages") · \(statusDescription)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -180,10 +208,13 @@ private struct WikiPageRow: View {
     private var color: Color {
         switch page.kind {
         case .project: .blue
-        case .concept: .yellow
         case .decision: .purple
         case .constraint: .orange
+        case .experiment: .mint
+        case .feedback: .pink
+        case .person: .cyan
         case .openQuestion: .teal
+        case .concept: .yellow
         }
     }
 }
@@ -368,6 +399,27 @@ private struct LivingWikiInfoView: View {
         NavigationStack {
             List {
                 Section {
+                    Label(ProjectMemoryProgram.current.name, systemImage: "scope")
+                    Text(ProjectMemoryProgram.current.objective)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Memory program")
+                } footer: {
+                    Text("Program \(ProjectMemoryProgram.current.version)")
+                }
+                Section("Project schema") {
+                    ForEach(ProjectMemoryProgram.current.pageKinds) { kind in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(kind.singularLabel, systemImage: kind.systemImage)
+                                .font(.subheadline.weight(.semibold))
+                            Text(ProjectMemoryProgram.current.definition(for: kind))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Section {
                     Label("Your memories stay original", systemImage: "lock.doc.fill")
                     Text("The Living Wiki is a separate layer. Gemma reads saved memories but never rewrites them.")
                         .font(.footnote)
@@ -380,13 +432,19 @@ private struct LivingWikiInfoView: View {
                         .foregroundStyle(.secondary)
                 }
                 Section {
-                    Label("Every change keeps its sources", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    Text("When a page changes, Remember stores the supporting memory and a versioned explanation so you can inspect what happened later.")
+                    Label("Every proposal is checked", systemImage: "checkmark.shield.fill")
+                    Text("Deterministic local checks protect page limits, traceability, candidate scope, unique targets, revision integrity, and links. Gemma does not grade its own work.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
+                    Label("Research History stays inspectable", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    Text("Every new run records its source, before and after text, model and prompt versions, checks, and why the proposed patch was kept or discarded. It stores evidence and decisions, not hidden chain-of-thought.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("How Living Wiki works")
+            .navigationTitle("How Project Memory works")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

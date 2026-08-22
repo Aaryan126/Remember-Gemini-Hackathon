@@ -3,40 +3,52 @@ import GRDB
 
 nonisolated enum WikiPageKind: String, CaseIterable, Codable, DatabaseValueConvertible, Identifiable, Sendable {
     case project
-    case concept
     case decision
     case constraint
+    case experiment
+    case feedback
+    case person
     case openQuestion = "open_question"
+    case concept
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .project: "Projects"
-        case .concept: "Concepts"
         case .decision: "Decisions"
         case .constraint: "Constraints"
+        case .experiment: "Experiments"
+        case .feedback: "Feedback"
+        case .person: "People"
         case .openQuestion: "Open Questions"
+        case .concept: "Reference Knowledge"
         }
     }
 
     var singularLabel: String {
         switch self {
         case .project: "Project"
-        case .concept: "Concept"
         case .decision: "Decision"
         case .constraint: "Constraint"
+        case .experiment: "Experiment"
+        case .feedback: "Feedback"
+        case .person: "Person"
         case .openQuestion: "Open Question"
+        case .concept: "Reference"
         }
     }
 
     var systemImage: String {
         switch self {
         case .project: "shippingbox.fill"
-        case .concept: "lightbulb.fill"
         case .decision: "arrow.triangle.branch"
         case .constraint: "exclamationmark.shield.fill"
+        case .experiment: "testtube.2"
+        case .feedback: "quote.bubble.fill"
+        case .person: "person.fill"
         case .openQuestion: "questionmark.bubble.fill"
+        case .concept: "book.closed.fill"
         }
     }
 }
@@ -126,6 +138,7 @@ nonisolated struct WikiRevision: Codable, Equatable, FetchableRecord, Identifiab
     static let databaseTableName = "wikiRevision"
 
     let id: UUID
+    let runID: UUID?
     let pageID: UUID
     let memoryID: UUID?
     let revisionNumber: Int

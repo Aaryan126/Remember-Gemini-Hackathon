@@ -74,6 +74,7 @@ actor MemoryPipeline {
             try await memoryStore.recoverInterruptedProcessing()
             try await memoryStore.recoverInterruptedActivities()
             try await memoryStore.recoverInterruptedWikiCompilations()
+            try await memoryStore.recoverInterruptedProjectMemoryRuns()
             hasRecoveredInterruptedWork = true
         }
         try await importer.importPending()
@@ -318,12 +319,25 @@ actor MemoryPipeline {
         try await memoryStore.fetchWikiPageSnapshot(id: id)
     }
 
+    func projectMemoryHistory() async throws -> [ProjectMemoryRunSnapshot] {
+        try await memoryStore.fetchProjectMemoryHistory()
+    }
+
+    func projectMemoryExportDocument() async throws -> ProjectMemoryExportDocument {
+        let pages = try await memoryStore.fetchAllWikiPageSnapshots()
+        let history = try await memoryStore.fetchProjectMemoryHistory(limit: 2_000)
+        return ProjectMemoryExportDocument(
+            content: ProjectMemoryMarkdownRenderer.render(pages: pages, history: history)
+        )
+    }
+
     func claimNextWikiCompilation() async throws -> MemoryItem? {
         try await memoryStore.claimNextWikiCompilation()
     }
 
     func processWiki(_ memory: MemoryItem) async throws {
         var activityID: UUID?
+        var researchRunID: UUID?
         do {
             let candidates = try await wikiSearchService.candidates(for: memory)
             activityID = try await memoryStore.startActivity(
@@ -332,12 +346,30 @@ actor MemoryPipeline {
                 sourceCount: candidates.count,
                 modelVersion: GemmaLivingWikiCompiler.modelVersion
             )
+            researchRunID = try await memoryStore.startProjectMemoryRun(
+                operation: .compile,
+                memoryID: memory.id,
+                modelVersion: GemmaLivingWikiCompiler.modelVersion,
+                promptVersion: GemmaLivingWikiCompiler.promptVersion
+            )
             let proposal = try await wikiCompiler.compile(memory: memory, candidates: candidates)
+            let decision = ProjectMemoryPatchEvaluator.evaluate(
+                proposal: proposal,
+                allowedCandidateIDs: Set(candidates.map(\.page.id))
+            )
             try await memoryStore.applyWikiCompilation(
                 memoryID: memory.id,
                 sourceUpdatedAt: memory.updatedAt,
-                proposal: proposal,
-                allowedCandidateIDs: Set(candidates.map(\.page.id))
+                proposal: decision.proposalToApply,
+                allowedCandidateIDs: Set(candidates.map(\.page.id)),
+                runID: researchRunID,
+                runCompletion: ProjectMemoryRunCompletion(
+                    status: decision.status,
+                    proposedPageCount: proposal.pages.count,
+                    acceptedPageCount: decision.proposalToApply.pages.count,
+                    rationale: decision.rationale,
+                    checks: decision.checks
+                )
             )
             try await wikiSearchService.synchronizeIndex()
             if let activityID {
@@ -349,6 +381,16 @@ actor MemoryPipeline {
             }
         } catch is CancellationError {
             try? await memoryStore.resetWikiCompilationToPending(memoryID: memory.id)
+            if let researchRunID {
+                try? await memoryStore.finishProjectMemoryRun(
+                    id: researchRunID,
+                    status: .failed,
+                    proposedPageCount: 0,
+                    acceptedPageCount: 0,
+                    rationale: "The app interrupted this run before a patch could be evaluated.",
+                    checks: []
+                )
+            }
             if let activityID {
                 try? await memoryStore.finishActivity(
                     id: activityID,
@@ -359,6 +401,16 @@ actor MemoryPipeline {
             throw CancellationError()
         } catch LivingWikiError.sourceChanged {
             try? await memoryStore.resetWikiCompilationToPending(memoryID: memory.id)
+            if let researchRunID {
+                try? await memoryStore.finishProjectMemoryRun(
+                    id: researchRunID,
+                    status: .discarded,
+                    proposedPageCount: 0,
+                    acceptedPageCount: 0,
+                    rationale: "The source memory changed during compilation, so the stale patch was discarded and rescheduled.",
+                    checks: []
+                )
+            }
             if let activityID {
                 try? await memoryStore.finishActivity(
                     id: activityID,
@@ -370,6 +422,24 @@ actor MemoryPipeline {
             let message = (error as? LocalizedError)?.errorDescription
                 ?? "Gemma could not safely compile this memory into the wiki."
             try? await memoryStore.markWikiCompilationFailed(memoryID: memory.id, message: message)
+            if let researchRunID {
+                try? await memoryStore.finishProjectMemoryRun(
+                    id: researchRunID,
+                    status: .failed,
+                    proposedPageCount: 0,
+                    acceptedPageCount: 0,
+                    rationale: message,
+                    checks: [
+                        ProjectMemoryCheckDraft(
+                            checkID: "run.execution",
+                            label: "Local compiler completed",
+                            severity: .blocking,
+                            passed: false,
+                            message: "The local compiler did not produce an evaluable patch."
+                        ),
+                    ]
+                )
+            }
             if let activityID {
                 try? await memoryStore.finishActivity(
                     id: activityID,
@@ -382,5 +452,44 @@ actor MemoryPipeline {
 
     func retryFailedWikiCompilations() async throws {
         try await memoryStore.retryFailedWikiCompilations()
+    }
+
+    func runProjectMemoryLint() async throws {
+        let runID = try await memoryStore.startProjectMemoryRun(
+            operation: .lint,
+            memoryID: nil,
+            modelVersion: "deterministic-local-checks-v1",
+            promptVersion: "none"
+        )
+        do {
+            let input = try await memoryStore.fetchProjectMemoryLintInput()
+            let checks = ProjectMemoryLinter.checks(
+                pages: input.pages,
+                evidence: input.evidence,
+                revisions: input.revisions,
+                links: input.links
+            )
+            let needsAttention = checks.contains { !$0.passed && $0.severity != .information }
+            try await memoryStore.finishProjectMemoryRun(
+                id: runID,
+                status: needsAttention ? .attention : .passed,
+                proposedPageCount: 0,
+                acceptedPageCount: 0,
+                rationale: needsAttention
+                    ? "The protected evaluator found one or more structural warnings. No content was changed."
+                    : "The project memory passed every deterministic structural check. No content was changed.",
+                checks: checks
+            )
+        } catch {
+            try? await memoryStore.finishProjectMemoryRun(
+                id: runID,
+                status: .failed,
+                proposedPageCount: 0,
+                acceptedPageCount: 0,
+                rationale: "The local health check could not complete.",
+                checks: []
+            )
+            throw error
+        }
     }
 }

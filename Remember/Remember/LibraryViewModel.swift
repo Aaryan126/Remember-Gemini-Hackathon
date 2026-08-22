@@ -278,13 +278,44 @@ final class LibraryViewModel {
         }
     }
 
+    func projectMemoryHistory() async -> [ProjectMemoryRunSnapshot] {
+        do {
+            return try await livePipeline().projectMemoryHistory()
+        } catch {
+            errorMessage = Self.message(for: error)
+            return []
+        }
+    }
+
+    func projectMemoryExportDocument() async -> ProjectMemoryExportDocument? {
+        do {
+            return try await livePipeline().projectMemoryExportDocument()
+        } catch {
+            errorMessage = Self.message(for: error)
+            return nil
+        }
+    }
+
+    func reportProjectMemoryExportFailure(_ error: Error) {
+        let cocoaError = error as NSError
+        guard cocoaError.domain != NSCocoaErrorDomain || cocoaError.code != NSUserCancelledError else {
+            return
+        }
+        errorMessage = "Remember could not export the Project Memory Markdown file. Please choose another location and try again."
+    }
+
     private func compileWikiQueue(using pipeline: MemoryPipeline) async throws {
+        var processedAtLeastOneMemory = false
         while let memory = try await pipeline.claimNextWikiCompilation() {
             try Task.checkCancellation()
             try await pipeline.processWiki(memory)
+            processedAtLeastOneMemory = true
             try await reloadWiki(using: pipeline)
             try await reloadActivities(using: pipeline)
             await Task.yield()
+        }
+        if processedAtLeastOneMemory {
+            try await pipeline.runProjectMemoryLint()
         }
     }
 

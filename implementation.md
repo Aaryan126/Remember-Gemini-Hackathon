@@ -16,8 +16,9 @@ This implementation turns the original Gemma smoke test into the first usable Re
 10. The Share Extension accepts images, text, web links, and PDFs without fetching remote content.
 11. The main app records voice memories, transcribes them with an already-installed iOS on-device speech model, then sends only the local transcript to Gemma for title, summary, tags, search, and Ask Remember.
 12. An Organize tab creates, renames, and deletes non-owning collections, manages membership, and browses, renames, or removes tags across the library.
+13. The versioned Private Project Memory program compiles durable project knowledge, protects every new patch with deterministic checks, runs read-only structural linting, records Research History, and exports an open Markdown projection.
 
-This is deliberately not the full PRD. In-app camera/typed capture, scanned-PDF OCR, guaranteed background scheduling, proactive resurfacing, first-launch model delivery, and export/delete-all tooling remain future slices.
+This is deliberately not the full PRD. In-app camera/typed capture, scanned-PDF OCR, guaranteed background scheduling, proactive resurfacing, first-launch model delivery, full binary-vault backup, and delete-all tooling remain future slices.
 
 ## High-level architecture
 
@@ -222,7 +223,7 @@ Processing is deliberately sequential to avoid loading multiple multimodal gener
 
 The `isSynchronizing` guard prevents overlapping foreground and view lifecycle tasks.
 
-`ContentView` is a four-tab shell: **Memories**, **Ask**, **Organize**, and **Privacy**. The Memories tab remains a reverse-chronological, two-column visual library. It includes:
+`ContentView` is a five-tab shell while Project Memory is enabled: **Memories**, **Wiki**, **Ask**, **Organize**, and **Privacy**. Disabling Living Wiki restores the original four-tab v1 shell. The Memories tab remains a reverse-chronological, two-column visual library. It includes:
 
 - an always-visible search field with instant exact matching and explicit Gemma semantic submission;
 - horizontally scrollable type, date, and tag filters with a one-tap clear action;
@@ -262,6 +263,10 @@ The `isSynchronizing` guard prevents overlapping foreground and view lifecycle t
 - global tag rename/delete behavior and updated tag counts.
 - hybrid Living Wiki retrieval combining semantic, lexical, alias, and graph signals;
 - round-robin recovery of original wiki evidence memories for citations.
+- Private Project Memory schema/version exposure;
+- protected patch keep/discard behavior, including duplicate-target rejection;
+- deterministic whole-wiki lint failures and healthy invariants;
+- append-only run/check/revision linkage and open Markdown projection content.
 
 Commands used during implementation:
 
@@ -291,7 +296,7 @@ xcodebuild -quiet \
   build-for-testing
 ```
 
-Package resolution, the app build, compilation of the test bundle, and signed physical-device builds completed successfully. After adding hybrid retrieval and wiki-aware Ask, the unsigned generic iOS build completed successfully and all 28 deterministic unit tests passed on an iOS 26.5 simulator; simulator tests inject a fake embedder and do not claim to validate real Metal inference, Gemma, or live microphone transcription. The original full checkpoint reproduced an iOS `EXC_RESOURCE (RESOURCE_TYPE_MEMORY)` high-watermark stop at approximately 3.38 GiB. Inspection found approximately 2,483 MiB of language tensors, 320 MiB of vision tensors, and 583 MiB of unused audio tensors. The generated vision-only checkpoint was independently opened with `safetensors` 0.7.0 and contained 1,757 tensors: 1,096 language tensors, 661 vision tensors, and zero audio tensors. The optimized 2.9 GB app was built after enabling Increased Memory Limit, and `codesign -d --entitlements -` confirmed the signed executable contains both `com.apple.developer.kernel.increased-memory-limit = true` and the Remember App Group. A simulator is not an equivalent inference test for model execution.
+Package resolution, the app build, compilation of the test bundle, and signed physical-device builds completed successfully. After adding Private Project Memory, the unsigned generic iOS build completed successfully and all 33 deterministic unit tests passed on an iOS 26.5 simulator; simulator tests inject a fake embedder and do not claim to validate real Metal inference, Gemma, or live microphone transcription. The original full checkpoint reproduced an iOS `EXC_RESOURCE (RESOURCE_TYPE_MEMORY)` high-watermark stop at approximately 3.38 GiB. Inspection found approximately 2,483 MiB of language tensors, 320 MiB of vision tensors, and 583 MiB of unused audio tensors. The generated vision-only checkpoint was independently opened with `safetensors` 0.7.0 and contained 1,757 tensors: 1,096 language tensors, 661 vision tensors, and zero audio tensors. The optimized 2.9 GB app was built after enabling Increased Memory Limit, and `codesign -d --entitlements -` confirmed the signed executable contains both `com.apple.developer.kernel.increased-memory-limit = true` and the Remember App Group. A simulator is not an equivalent inference test for model execution.
 
 ## Physical iPhone acceptance test
 
@@ -319,7 +324,7 @@ Every analysis can take noticeably longer because Remember intentionally reloads
 
 ## Next recommended slice
 
-The next remaining PRD work is in-app typed/camera capture, scanned-PDF OCR, export/delete-all, proactive resurfacing, and opportunistic background queue scheduling. The current bundled approximately 2.9 GB Gemma app plus 34 MiB embedder is appropriate for development sideloading but should become a first-launch local asset installation flow before App Store distribution.
+The next remaining PRD work is in-app typed/camera capture, scanned-PDF OCR, full-vault backup/delete-all, proactive resurfacing, and opportunistic background queue scheduling. A bounded AutoLab evaluation corpus for compiler prompt experiments is the next Private Project Memory quality slice; unbounded autonomous research is intentionally out of scope for the current small on-device model. The current bundled approximately 2.9 GB Gemma app plus 34 MiB embedder is appropriate for development sideloading but should become a first-launch local asset installation flow before App Store distribution.
 
 ## Current product status — 22 August 2026
 
@@ -329,13 +334,13 @@ The next remaining PRD work is in-app typed/camera capture, scanned-PDF OCR, exp
 | Voice capture | Implemented | Explicit recording, installed on-device transcription, Gemma analysis, playback, and searchable transcript. |
 | Image understanding | Implemented | Original image plus Vision OCR go to local Gemma. |
 | Natural-language retrieval | Implemented | BGE Micro vectors + lexical/title/tag/OCR matching + optional Gemma expansion. |
-| Living Wiki | Implemented foundation | Automatic queue, typed pages, semantic duplicate reduction, graph links, evidence, revisions, contradictions, and reversible v1 toggle. |
+| Private Project Memory | Implemented foundation | Automatic Living Wiki, project schema, protected patch gates, structural linting, Research History, open Markdown projection, and reversible v1 toggle. |
 | Ask | Implemented | Wiki-first retrieval, original-memory drill-down, Gemma answer, and tappable citations. |
 | Collections and tags | Implemented | Local collection membership and global tag management. |
 | Privacy/activity UI | Implemented with platform caveat | No application networking path; content-free local activity log. iOS does not expose a complete packet log to the app. |
 | In-app typed note and camera | Not implemented | Still required by PRD 4.1. |
 | Scanned-PDF OCR | Not implemented | Text PDFs work; image-only PDF pages are not yet rendered/OCR'd. |
-| Full export and delete-all | Not implemented | Individual deletion exists; the PRD trust-layer tooling remains. |
+| Export and delete-all | Partial | Open derived knowledge + research ledger export is implemented; full binary-vault backup and delete-all remain. |
 | Proactive resurfacing | Not implemented | PRD v2 item. |
 | Background scheduling | Not implemented | Foreground queues are automatic; iOS background execution needs a best-effort scheduler and must remain retry-safe. |
 | Production model delivery | Not implemented | Both models are offline local bundles for development; first-launch installation/progress is still needed. |
@@ -344,7 +349,7 @@ No routine classification or wiki-routing task is assigned to the user. Gemma de
 
 ## Living Wiki v2 foundation
 
-Remember now has an additive, reversible Living Wiki layer inspired by Karpathy's persistent LLM Wiki pattern and A-MEM's dynamically linked memory approach. It does not replace the original memory library. Raw captures remain the immutable source of truth, while Gemma maintains a separate derived layer of projects, concepts, decisions, constraints, and open questions.
+Remember now has an additive, reversible Living Wiki layer inspired by Karpathy's persistent LLM Wiki pattern and A-MEM's dynamically linked memory approach. It does not replace the original memory library. Raw captures remain the immutable source of truth, while Gemma maintains a separate derived Private Project Memory layer: projects, decisions, constraints, experiments, feedback, people, open questions, and supporting reference knowledge.
 
 ### Returning to v1
 
@@ -367,7 +372,9 @@ After a memory reaches the existing `indexed` state:
 4. The top direct matches expand through one graph hop so an already-linked decision or constraint can accompany a matching project even when its wording is different.
 5. At most eight candidates are included in the Gemma prompt. Gemma never receives the entire wiki.
 6. `GemmaLivingWikiCompiler` returns a strict JSON patch containing at most five page changes. Candidate UUIDs must exactly match the locally supplied allowlist; invented IDs and malformed entries are discarded.
-7. `MemoryStore.applyWikiCompilation` writes pages, source evidence, page links, revisions, and the compilation completion marker in one SQLite transaction.
+7. `ProjectMemoryPatchEvaluator` runs deterministic protected checks. Unsafe or empty proposals are recorded and discarded without wiki mutation; accepted proposals continue to persistence.
+8. `MemoryStore.applyWikiCompilation` writes pages, source evidence, page links, run-linked revisions, and the compilation completion marker in one SQLite transaction.
+9. After a foreground compilation batch, `ProjectMemoryLinter` performs a read-only whole-wiki check for traceability, revision consistency, canonical uniqueness, link integrity, and connectedness.
 
 Only one compilation runs at a time through the existing `GemmaExecutionGate`. While the app remains foregrounded, it automatically drains the queue sequentially and refreshes the Wiki after every memory. There is no routine review inbox or “compile next” work for the user; manual interaction remains only as an exceptional retry for a failed model run. Cancellation safely returns the current source to the local queue.
 
@@ -381,6 +388,8 @@ Only one compilation runs at a time through the existing `GemmaExecutionGate`. W
 | `wikiRevision` | Append-only before/after summary, effect, rationale, source memory, model version, and timestamp |
 | `wikiCompilation` | Idempotent per-memory queue state tied to the source memory's last update |
 | `wikiPageSearchIndex` | Page search text, source timestamp, BGE Micro vector, and embedding-model identifier |
+| `projectMemoryRun` | Append-only compiler/lint operation with source, result, model/prompt/program versions, counts, and acceptance rationale |
+| `projectMemoryCheck` | Deterministic check result and severity for one operation |
 
 All tables are separate from the v1 memory and search tables. Foreign keys clean up source links if a memory is explicitly deleted, while page revision history remains browsable where possible.
 
@@ -388,7 +397,7 @@ All tables are separate from the v1 memory and search tables. Foreign keys clean
 
 Gemma proposes a bounded patch; it never writes SQLite directly. Deterministic code enforces:
 
-- the five supported page types;
+- the versioned project-specific page schema;
 - maximum lengths and page/update counts;
 - candidate UUID allowlisting;
 - normalized type-and-title uniqueness;
@@ -399,7 +408,7 @@ Gemma proposes a bounded patch; it never writes SQLite directly. Deterministic c
 
 A contradiction is retained as a `contradicted` revision and evidence effect rather than silently overwriting history. The page detail screen exposes the current synthesis, aliases, related pages, cited source memories, revision numbers, rationales, and before/after summaries.
 
-The user-facing Wiki UI keeps compiler terminology behind an optional **How Living Wiki works** sheet. Page details present the current synthesis first, rename evidence to **Sources**, translate internal effects into plain language, and hide the History section until a page has more than one revision. Contradictions remain visible as information, but normal routing, page selection, linking, and updates are automatic rather than assigned to a human review workflow.
+The user-facing Wiki UI keeps compiler terminology behind an optional **How Project Memory works** sheet. It exposes the program objective and schema, while page details present the current synthesis first, rename evidence to **Sources**, translate internal effects into plain language, and hide the History section until a page has more than one revision. Contradictions remain visible as information, but normal routing, page selection, linking, and updates are automatic rather than assigned to a human review workflow.
 
 ### Hybrid candidate retrieval
 
@@ -408,6 +417,28 @@ The user-facing Wiki UI keeps compiler terminology behind an optional **How Livi
 For wiki compilation, semantic similarity can introduce a candidate even when a new memory paraphrases the page completely. Exact names and aliases still receive strong lexical weight, and the top direct matches still expand through one page-graph hop. Deterministic code applies thresholds and caps the result at eight before Gemma sees it. This substantially narrows duplicate-page risk without asking Gemma to inspect the entire wiki.
 
 BGE Micro is English-focused. Its small size is the right fit for the current English prototype and iPhone memory ceiling; multilingual retrieval remains a future model-quality decision rather than an implicit claim.
+
+### Private Project Memory program
+
+`ProjectMemoryProgram` is a fixed, versioned policy boundary rather than an unbounded agent prompt. Version `private-project-memory-v1` states the objective and exposes eight page types in both the compiler prompt and product UI: project, decision, constraint, experiment, feedback, person, open question, and reference knowledge. The compiler prompt is independently versioned as `project-memory-compiler-v2`.
+
+This schema makes the product opinionated about project continuity while remaining broad enough for founders, makers, and creative work. The legacy `concept` database value remains valid and is presented as Reference Knowledge, so existing installs migrate without rewriting pages.
+
+### Research History and protected evaluation
+
+Every new compilation starts an append-only `projectMemoryRun`. The record identifies the source memory, operation, timestamps, Gemma/model version, prompt version, program version, proposed and accepted page counts, final keep/discard state, and a bounded rationale. Accepted `wikiRevision` rows link back to the run. `projectMemoryCheck` rows store named deterministic outcomes with information, warning, or blocking severity.
+
+The protected patch evaluator checks the page budget, retrieved-candidate boundary, required source-grounded fields, unique targets, and self-link hygiene. A blocking failure converts the proposed patch to an empty patch before persistence. An empty but safe Gemma proposal is also recorded as **No change**, which prevents needless pages without creating manual review work.
+
+After at least one memory is processed in a foreground compilation batch, the read-only linter checks the whole graph. Its connectedness result is informational because separate projects can legitimately form separate components; traceability, revision consistency, canonical uniqueness, and link integrity are stronger structural invariants. The Research History UI provides a chronological log, opens the original source where it still exists, shows accepted before/after patches, exposes all check results, and records reproducibility identifiers. It deliberately stores operational evidence and rationale, not chain-of-thought.
+
+Runs that were in progress when the process stopped are marked failed on the next bootstrap. Existing wiki revisions have a null run identifier and remain valid; they naturally predate the Research History migration.
+
+### Open Markdown projection
+
+`ProjectMemoryMarkdownRenderer` produces a deterministic, dependency-free text projection and `ProjectMemoryExportDocument` presents it through SwiftUI's system file exporter. The document includes YAML metadata, schema-grouped index, pages, aliases, connections, source-memory identifiers and titles, revision history, model/prompt/program versions, checks, and the chronological operation ledger.
+
+This is an explicit export initiated from the Project Memory menu. It does not embed source binaries, copy the SQLite database, or change the private vault. The format is therefore portable and inspectable but is not yet the PRD's complete backup/delete-all solution.
 
 ### Living Wiki physical-device acceptance test
 
@@ -421,3 +452,6 @@ BGE Micro is English-focused. Its small size is the right fit for the current En
 8. Turn off Living Wiki from the Memories ellipsis menu. Confirm the Wiki tab disappears and all v1 features still work.
 9. Re-enable it from the same menu and confirm the pages and history return.
 10. Ask a question represented by a wiki page. Verify the response is organized from the compiled page but its visible citations open original memories, not the derived wiki page.
+11. Open **Project Memory → menu → Research History**. Verify the newest integration shows its source, kept/no-change result, checks, model/prompt/program versions, and accepted patch details.
+12. Confirm a batch-level **Project memory check** follows the integration and exposes read-only structural results.
+13. Choose **Export open Markdown**, save the document in Files, and inspect its index, pages, sources, revisions, and Research History section.

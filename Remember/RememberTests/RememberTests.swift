@@ -742,6 +742,135 @@ struct RememberTests {
         #expect(try await store.fetchWikiQueueSummary().pending == 0)
     }
 
+    @Test func projectMemoryProgramExposesProjectSpecificSchema() {
+        let program = ProjectMemoryProgram.current
+
+        #expect(program.name == "Private Project Memory")
+        #expect(program.pageKinds.contains(.decision))
+        #expect(program.pageKinds.contains(.experiment))
+        #expect(program.pageKinds.contains(.feedback))
+        #expect(program.pageKinds.contains(.person))
+        #expect(program.promptTypeList.contains("open_question"))
+    }
+
+    @Test func protectedPatchEvaluatorKeepsSafePatchAndDiscardsDuplicateTargets() {
+        let validPage = WikiPageProposal(
+            candidateID: nil,
+            kind: .decision,
+            title: "Use local inference",
+            summary: "The project uses local Gemma inference.",
+            aliases: [],
+            effect: .introduced,
+            rationale: "The source explicitly records the model choice.",
+            relatedCandidateIDs: []
+        )
+
+        let kept = ProjectMemoryPatchEvaluator.evaluate(
+            proposal: WikiCompilationProposal(pages: [validPage]),
+            allowedCandidateIDs: []
+        )
+        let discarded = ProjectMemoryPatchEvaluator.evaluate(
+            proposal: WikiCompilationProposal(pages: [validPage, validPage]),
+            allowedCandidateIDs: []
+        )
+
+        #expect(kept.status == .kept)
+        #expect(kept.proposalToApply.pages.count == 1)
+        #expect(kept.checks.allSatisfy { $0.passed })
+        #expect(discarded.status == .discarded)
+        #expect(discarded.proposalToApply.pages.isEmpty)
+        #expect(discarded.checks.contains { $0.checkID == "patch.unique_targets" && !$0.passed })
+    }
+
+    @Test func projectMemoryLinterReportsTraceabilityAndRevisionIntegrity() {
+        let page = wikiPage(
+            kind: .project,
+            title: "Remember",
+            summary: "A private project memory.",
+            aliases: [],
+            updatedAt: Date()
+        )
+
+        let checks = ProjectMemoryLinter.checks(
+            pages: [page],
+            evidence: [],
+            revisions: [],
+            links: []
+        )
+
+        #expect(checks.contains { $0.checkID == "wiki.source_traceability" && !$0.passed })
+        #expect(checks.contains { $0.checkID == "wiki.revision_integrity" && !$0.passed })
+        #expect(checks.contains { $0.checkID == "wiki.link_integrity" && $0.passed })
+    }
+
+    @Test func researchHistoryLinksAcceptedPatchChecksAndOpenMarkdown() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try MemoryStore(databaseURL: root.appendingPathComponent("remember.sqlite"))
+        let memory = indexedMemory(
+            kind: .text,
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000),
+            title: "Model choice",
+            summary: "Use Gemma locally instead of a hosted API.",
+            tags: ["decision"]
+        )
+        try await store.insertIfNeeded(memory)
+        try await store.prepareWikiCompilationQueue()
+        _ = try await store.claimNextWikiCompilation()
+        let proposal = WikiCompilationProposal(pages: [
+            WikiPageProposal(
+                candidateID: nil,
+                kind: .decision,
+                title: "Use Gemma on-device",
+                summary: "The project uses Gemma on-device rather than a hosted API.",
+                aliases: [],
+                effect: .introduced,
+                rationale: "The source records the privacy architecture decision.",
+                relatedCandidateIDs: []
+            ),
+        ])
+        let decision = ProjectMemoryPatchEvaluator.evaluate(proposal: proposal, allowedCandidateIDs: [])
+        let runID = try await store.startProjectMemoryRun(
+            operation: .compile,
+            memoryID: memory.id,
+            modelVersion: "test-model",
+            promptVersion: "test-prompt"
+        )
+        try await store.applyWikiCompilation(
+            memoryID: memory.id,
+            sourceUpdatedAt: memory.updatedAt,
+            proposal: decision.proposalToApply,
+            allowedCandidateIDs: [],
+            runID: runID
+        )
+        try await store.finishProjectMemoryRun(
+            id: runID,
+            status: decision.status,
+            proposedPageCount: proposal.pages.count,
+            acceptedPageCount: decision.proposalToApply.pages.count,
+            rationale: decision.rationale,
+            checks: decision.checks
+        )
+
+        let history = try await store.fetchProjectMemoryHistory()
+        let run = try #require(history.first)
+        #expect(run.run.status == .kept)
+        #expect(run.memoryTitle == "Model choice")
+        #expect(run.checks.count == 5)
+        #expect(run.changes.first?.pageTitle == "Use Gemma on-device")
+
+        let markdown = ProjectMemoryMarkdownRenderer.render(
+            pages: try await store.fetchAllWikiPageSnapshots(),
+            history: history,
+            generatedAt: Date(timeIntervalSince1970: 1_800_000_100)
+        )
+        #expect(markdown.contains("format: remember-project-memory"))
+        #expect(markdown.contains("# Project Memory"))
+        #expect(markdown.contains("Use Gemma on-device"))
+        #expect(markdown.contains("## Research History"))
+        #expect(markdown.contains("test-prompt"))
+    }
+
     private func makeTemporaryModelDirectory(excluding excludedFilename: String? = nil) throws -> URL {
         let directory = try makeTemporaryDirectory()
 
