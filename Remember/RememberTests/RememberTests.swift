@@ -30,6 +30,19 @@ struct RememberTests {
         }
     }
 
+    @Test func assistantMarkdownRendersEmphasisAndListMarkers() throws {
+        let rendered = ChatMarkdownRenderer.render(
+            "Deadlines:\n\n* **September 4th:** Assignment 1 [M1]."
+        )
+        let visibleText = String(rendered.characters)
+
+        #expect(visibleText.contains("• September 4th:"))
+        #expect(!visibleText.contains("**"))
+        #expect(rendered.runs.contains { run in
+            run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
+        })
+    }
+
     @Test func savesImageAndMetadataToCaptureInbox() throws {
         let container = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: container) }

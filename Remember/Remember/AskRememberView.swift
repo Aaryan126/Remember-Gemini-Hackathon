@@ -131,7 +131,7 @@ private struct ChatMessageView: View {
 
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 10) {
-            Text(message.text)
+            Text(renderedText)
                 .font(.body)
                 .textSelection(.enabled)
                 .padding(.horizontal, 14)
@@ -191,6 +191,13 @@ private struct ChatMessageView: View {
         .padding(.horizontal, 16)
     }
 
+    private var renderedText: AttributedString {
+        guard message.role == .assistant else {
+            return AttributedString(message.text)
+        }
+        return ChatMarkdownRenderer.render(message.text)
+    }
+
     private func sourceIcon(for kind: MemoryKind) -> String {
         switch kind {
         case .audio: "waveform"
@@ -199,5 +206,31 @@ private struct ChatMessageView: View {
         case .pdf: "doc.richtext"
         case .text: "text.quote"
         }
+    }
+}
+
+nonisolated enum ChatMarkdownRenderer {
+    static func render(_ markdown: String) -> AttributedString {
+        let normalizedLists = markdown
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(normalizeListMarker)
+            .joined(separator: "\n")
+
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace,
+            failurePolicy: .returnPartiallyParsedIfPossible
+        )
+        return (try? AttributedString(markdown: normalizedLists, options: options))
+            ?? AttributedString(markdown)
+    }
+
+    private static func normalizeListMarker(_ line: Substring) -> String {
+        let value = String(line)
+        let indentation = value.prefix { $0 == " " || $0 == "\t" }
+        let content = value.dropFirst(indentation.count)
+        guard content.hasPrefix("* ") || content.hasPrefix("- ") || content.hasPrefix("+ ") else {
+            return value
+        }
+        return String(indentation) + "• " + content.dropFirst(2)
     }
 }
