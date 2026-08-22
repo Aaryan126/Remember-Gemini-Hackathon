@@ -1,0 +1,874 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		52A6F9293038032F001C6831 /* RememberShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 52A6F91F3038032F001C6831 /* RememberShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000001 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000030 /* MLXLLM */; };
+		A10000000000000000000002 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000031 /* MLXLMCommon */; };
+		A10000000000000000000003 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000032 /* MLXHuggingFace */; };
+		A10000000000000000000004 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000033 /* HuggingFace */; };
+		A10000000000000000000005 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000034 /* Tokenizers */; };
+		A10000000000000000000006 /* gemma-4-e2b-vision in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* gemma-4-e2b-vision */; };
+		B20000000000000000000001 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000030 /* MLXVLM */; };
+		B20000000000000000000002 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000031 /* GRDB */; };
+		C30000000000000000000001 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = C30000000000000000000030 /* MLXEmbedders */; };
+		C30000000000000000000002 /* bge-micro-v2 in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000010 /* bge-micro-v2 */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		52A6F8D63037FD09001C6831 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 52A6F8BE3037FD08001C6831 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 52A6F8C53037FD08001C6831;
+			remoteInfo = Remember;
+		};
+		52A6F8E03037FD0A001C6831 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 52A6F8BE3037FD08001C6831 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 52A6F8C53037FD08001C6831;
+			remoteInfo = Remember;
+		};
+		52A6F9273038032F001C6831 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 52A6F8BE3037FD08001C6831 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 52A6F91E3038032F001C6831;
+			remoteInfo = RememberShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		52A6F92E3038032F001C6831 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				52A6F9293038032F001C6831 /* RememberShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		52A6F8C63037FD08001C6831 /* Remember.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Remember.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		52A6F8D53037FD09001C6831 /* RememberTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RememberTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		52A6F8DF3037FD0A001C6831 /* RememberUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RememberUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		52A6F91F3038032F001C6831 /* RememberShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RememberShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000010 /* gemma-4-e2b-vision */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "gemma-4-e2b-vision"; path = "../../../models/gemma-4-e2b-vision"; sourceTree = "<group>"; };
+		C30000000000000000000010 /* bge-micro-v2 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "bge-micro-v2"; path = "../../../models/bge-micro-v2"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		52A6F92A3038032F001C6831 /* Exceptions for "RememberShareExtension" folder in "RememberShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 52A6F91E3038032F001C6831 /* RememberShareExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		52A6F8C83037FD08001C6831 /* Remember */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Remember;
+			sourceTree = "<group>";
+		};
+		52A6F8D83037FD09001C6831 /* RememberTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RememberTests;
+			sourceTree = "<group>";
+		};
+		52A6F8E23037FD0A001C6831 /* RememberUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RememberUITests;
+			sourceTree = "<group>";
+		};
+		52A6F9203038032F001C6831 /* RememberShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				52A6F92A3038032F001C6831 /* Exceptions for "RememberShareExtension" folder in "RememberShareExtension" target */,
+			);
+			path = RememberShareExtension;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000010 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		52A6F8C33037FD08001C6831 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* MLXLLM in Frameworks */,
+				B20000000000000000000001 /* MLXVLM in Frameworks */,
+				C30000000000000000000001 /* MLXEmbedders in Frameworks */,
+				A10000000000000000000002 /* MLXLMCommon in Frameworks */,
+				A10000000000000000000003 /* MLXHuggingFace in Frameworks */,
+				A10000000000000000000004 /* HuggingFace in Frameworks */,
+				A10000000000000000000005 /* Tokenizers in Frameworks */,
+				B20000000000000000000002 /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F8D23037FD09001C6831 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F8DC3037FD0A001C6831 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F91C3038032F001C6831 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		52A6F8BD3037FD08001C6831 = {
+			isa = PBXGroup;
+			children = (
+				52A6F8C83037FD08001C6831 /* Remember */,
+				B10000000000000000000010 /* Shared */,
+				A10000000000000000000010 /* gemma-4-e2b-vision */,
+				C30000000000000000000010 /* bge-micro-v2 */,
+				52A6F8D83037FD09001C6831 /* RememberTests */,
+				52A6F8E23037FD0A001C6831 /* RememberUITests */,
+				52A6F9203038032F001C6831 /* RememberShareExtension */,
+				52A6F8C73037FD08001C6831 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		52A6F8C73037FD08001C6831 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				52A6F8C63037FD08001C6831 /* Remember.app */,
+				52A6F8D53037FD09001C6831 /* RememberTests.xctest */,
+				52A6F8DF3037FD0A001C6831 /* RememberUITests.xctest */,
+				52A6F91F3038032F001C6831 /* RememberShareExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		52A6F8C53037FD08001C6831 /* Remember */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 52A6F8E93037FD0A001C6831 /* Build configuration list for PBXNativeTarget "Remember" */;
+			buildPhases = (
+				52A6F8C23037FD08001C6831 /* Sources */,
+				52A6F8C33037FD08001C6831 /* Frameworks */,
+				52A6F8C43037FD08001C6831 /* Resources */,
+				52A6F92E3038032F001C6831 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				52A6F9283038032F001C6831 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				52A6F8C83037FD08001C6831 /* Remember */,
+				B10000000000000000000010 /* Shared */,
+			);
+			name = Remember;
+			packageProductDependencies = (
+				A10000000000000000000030 /* MLXLLM */,
+				B20000000000000000000030 /* MLXVLM */,
+				C30000000000000000000030 /* MLXEmbedders */,
+				A10000000000000000000031 /* MLXLMCommon */,
+				A10000000000000000000032 /* MLXHuggingFace */,
+				A10000000000000000000033 /* HuggingFace */,
+				A10000000000000000000034 /* Tokenizers */,
+				B20000000000000000000031 /* GRDB */,
+			);
+			productName = Remember;
+			productReference = 52A6F8C63037FD08001C6831 /* Remember.app */;
+			productType = "com.apple.product-type.application";
+		};
+		52A6F8D43037FD09001C6831 /* RememberTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 52A6F8EC3037FD0A001C6831 /* Build configuration list for PBXNativeTarget "RememberTests" */;
+			buildPhases = (
+				52A6F8D13037FD09001C6831 /* Sources */,
+				52A6F8D23037FD09001C6831 /* Frameworks */,
+				52A6F8D33037FD09001C6831 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				52A6F8D73037FD09001C6831 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				52A6F8D83037FD09001C6831 /* RememberTests */,
+			);
+			name = RememberTests;
+			packageProductDependencies = (
+			);
+			productName = RememberTests;
+			productReference = 52A6F8D53037FD09001C6831 /* RememberTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		52A6F8DE3037FD0A001C6831 /* RememberUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 52A6F8EF3037FD0A001C6831 /* Build configuration list for PBXNativeTarget "RememberUITests" */;
+			buildPhases = (
+				52A6F8DB3037FD0A001C6831 /* Sources */,
+				52A6F8DC3037FD0A001C6831 /* Frameworks */,
+				52A6F8DD3037FD0A001C6831 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				52A6F8E13037FD0A001C6831 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				52A6F8E23037FD0A001C6831 /* RememberUITests */,
+			);
+			name = RememberUITests;
+			packageProductDependencies = (
+			);
+			productName = RememberUITests;
+			productReference = 52A6F8DF3037FD0A001C6831 /* RememberUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		52A6F91E3038032F001C6831 /* RememberShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 52A6F92B3038032F001C6831 /* Build configuration list for PBXNativeTarget "RememberShareExtension" */;
+			buildPhases = (
+				52A6F91B3038032F001C6831 /* Sources */,
+				52A6F91C3038032F001C6831 /* Frameworks */,
+				52A6F91D3038032F001C6831 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				52A6F9203038032F001C6831 /* RememberShareExtension */,
+				B10000000000000000000010 /* Shared */,
+			);
+			name = RememberShareExtension;
+			packageProductDependencies = (
+			);
+			productName = RememberShareExtension;
+			productReference = 52A6F91F3038032F001C6831 /* RememberShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		52A6F8BE3037FD08001C6831 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					52A6F8C53037FD08001C6831 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					52A6F8D43037FD09001C6831 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 52A6F8C53037FD08001C6831;
+					};
+					52A6F8DE3037FD0A001C6831 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 52A6F8C53037FD08001C6831;
+					};
+					52A6F91E3038032F001C6831 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = 52A6F8C13037FD08001C6831 /* Build configuration list for PBXProject "Remember" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 52A6F8BD3037FD08001C6831;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				A10000000000000000000021 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				A10000000000000000000022 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				B20000000000000000000020 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 52A6F8C73037FD08001C6831 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				52A6F8C53037FD08001C6831 /* Remember */,
+				52A6F8D43037FD09001C6831 /* RememberTests */,
+				52A6F8DE3037FD0A001C6831 /* RememberUITests */,
+				52A6F91E3038032F001C6831 /* RememberShareExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		52A6F8C43037FD08001C6831 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000006 /* gemma-4-e2b-vision in Resources */,
+				C30000000000000000000002 /* bge-micro-v2 in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F8D33037FD09001C6831 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F8DD3037FD0A001C6831 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F91D3038032F001C6831 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		52A6F8C23037FD08001C6831 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F8D13037FD09001C6831 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F8DB3037FD0A001C6831 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		52A6F91B3038032F001C6831 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		52A6F8D73037FD09001C6831 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 52A6F8C53037FD08001C6831 /* Remember */;
+			targetProxy = 52A6F8D63037FD09001C6831 /* PBXContainerItemProxy */;
+		};
+		52A6F8E13037FD0A001C6831 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 52A6F8C53037FD08001C6831 /* Remember */;
+			targetProxy = 52A6F8E03037FD0A001C6831 /* PBXContainerItemProxy */;
+		};
+		52A6F9283038032F001C6831 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 52A6F91E3038032F001C6831 /* RememberShareExtension */;
+			targetProxy = 52A6F9273038032F001C6831 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		52A6F8E73037FD0A001C6831 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		52A6F8E83037FD0A001C6831 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		52A6F8EA3037FD0A001C6831 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Remember/Remember.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 397P48LWC5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Remember records only when you tap Record so it can save a private voice memory on this iPhone.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Remember transcribes voice memories using an installed on-device speech model; the transcript then stays in your local library.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.Remember;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		52A6F8EB3037FD0A001C6831 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Remember/Remember.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 397P48LWC5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Remember records only when you tap Record so it can save a private voice memory on this iPhone.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Remember transcribes voice memories using an installed on-device speech model; the transcript then stays in your local library.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.Remember;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		52A6F8ED3037FD0A001C6831 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.RememberTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Remember.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Remember";
+			};
+			name = Debug;
+		};
+		52A6F8EE3037FD0A001C6831 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.RememberTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Remember.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Remember";
+			};
+			name = Release;
+		};
+		52A6F8F03037FD0A001C6831 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.RememberUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Remember;
+			};
+			name = Debug;
+		};
+		52A6F8F13037FD0A001C6831 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.RememberUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Remember;
+			};
+			name = Release;
+		};
+		52A6F92C3038032F001C6831 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RememberShareExtension/RememberShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 397P48LWC5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RememberShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RememberShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.Remember.RememberShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		52A6F92D3038032F001C6831 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RememberShareExtension/RememberShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 397P48LWC5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RememberShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RememberShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SimpleStudio.Remember.RememberShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		52A6F8C13037FD08001C6831 /* Build configuration list for PBXProject "Remember" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52A6F8E73037FD0A001C6831 /* Debug */,
+				52A6F8E83037FD0A001C6831 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		52A6F8E93037FD0A001C6831 /* Build configuration list for PBXNativeTarget "Remember" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52A6F8EA3037FD0A001C6831 /* Debug */,
+				52A6F8EB3037FD0A001C6831 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		52A6F8EC3037FD0A001C6831 /* Build configuration list for PBXNativeTarget "RememberTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52A6F8ED3037FD0A001C6831 /* Debug */,
+				52A6F8EE3037FD0A001C6831 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		52A6F8EF3037FD0A001C6831 /* Build configuration list for PBXNativeTarget "RememberUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52A6F8F03037FD0A001C6831 /* Debug */,
+				52A6F8F13037FD0A001C6831 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		52A6F92B3038032F001C6831 /* Build configuration list for PBXNativeTarget "RememberShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52A6F92C3038032F001C6831 /* Debug */,
+				52A6F92D3038032F001C6831 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = revision;
+				revision = 68947ccdca79bcf7a26dc220f73caa060369513c;
+			};
+		};
+		A10000000000000000000021 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.0;
+			};
+		};
+		A10000000000000000000022 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = exactVersion;
+				version = 1.3.0;
+			};
+		};
+		B20000000000000000000020 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.11.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000000000000000000030 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		A10000000000000000000031 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		A10000000000000000000032 /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
+		A10000000000000000000033 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000021 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		A10000000000000000000034 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000022 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		B20000000000000000000030 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
+		};
+		B20000000000000000000031 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000020 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+		C30000000000000000000030 /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXEmbedders;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 52A6F8BE3037FD08001C6831 /* Project object */;
+}
