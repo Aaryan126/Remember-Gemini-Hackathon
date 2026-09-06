@@ -96,6 +96,8 @@ actor MemoryStore {
             )
         }
         migrator.registerMigration("createLivingWiki") { database in
+            // Legacy tables are retained so databases created by the removed Project
+            // feature still open. No live pipeline reads or writes this data.
             try database.create(table: WikiPage.databaseTableName) { table in
                 table.column("id", .text).primaryKey()
                 table.column("kind", .text).notNull().indexed()
@@ -218,6 +220,48 @@ actor MemoryStore {
                 columns: ["runID"]
             )
         }
+        migrator.registerMigration("addChunkedMemoryEvidence") { database in
+            try database.alter(table: MemoryItem.databaseTableName) { table in
+                table.add(column: "analysisIsPartial", .boolean).notNull().defaults(to: false)
+            }
+            try database.create(table: MemoryChunk.databaseTableName) { table in
+                table.column("id", .text).primaryKey()
+                table.column("memoryID", .text)
+                    .notNull()
+                    .indexed()
+                    .references(MemoryItem.databaseTableName, onDelete: .cascade)
+                table.column("ordinal", .integer).notNull()
+                table.column("locator", .text).notNull()
+                table.column("text", .text).notNull()
+                table.column("extractionMethod", .text).notNull()
+                table.column("sourceUpdatedAt", .datetime).notNull()
+                table.column("embeddingData", .blob)
+                table.column("embeddingModel", .text).notNull()
+                table.uniqueKey(["memoryID", "ordinal"])
+            }
+        }
+        migrator.registerMigration("addProjectMemoryHumanControl") { database in
+            try database.alter(table: WikiPage.databaseTableName) { table in
+                table.add(column: "updatePolicy", .text).notNull().defaults(to: WikiPageUpdatePolicy.automatic.rawValue)
+            }
+            try database.alter(table: WikiRevision.databaseTableName) { table in
+                table.add(column: "origin", .text).notNull().defaults(to: WikiRevisionOrigin.model.rawValue)
+                table.add(column: "previousPageJSON", .text)
+                table.add(column: "newPageJSON", .text)
+            }
+            try database.create(table: PendingWikiChange.databaseTableName) { table in
+                table.column("id", .text).primaryKey()
+                table.column("memoryID", .text).notNull().references(MemoryItem.databaseTableName, onDelete: .cascade)
+                table.column("runID", .text).references(ProjectMemoryRun.databaseTableName, onDelete: .setNull)
+                table.column("targetPageID", .text).references(WikiPage.databaseTableName, onDelete: .setNull)
+                table.column("proposalJSON", .text).notNull()
+                table.column("reason", .text).notNull()
+                table.column("status", .text).notNull().indexed()
+                table.column("createdAt", .datetime).notNull().indexed()
+                table.column("resolvedAt", .datetime)
+                table.column("modelVersion", .text).notNull()
+            }
+        }
         try migrator.migrate(databasePool)
         try fileManager.setAttributes(Self.protectedAttributes, ofItemAtPath: databaseURL.path)
     }
@@ -260,6 +304,34 @@ actor MemoryStore {
         }
     }
 
+    func fetchChunks(memoryID: UUID? = nil) async throws -> [MemoryChunk] {
+        try await databasePool.read { database in
+            let request = MemoryChunk.order(Column("memoryID"), Column("ordinal"))
+            if let memoryID {
+                return try request.filter(Column("memoryID") == memoryID).fetchAll(database)
+            }
+            return try request.fetchAll(database)
+        }
+    }
+
+    func replaceChunks(memoryID: UUID, with chunks: [MemoryChunk]) async throws {
+        try await databasePool.write { database in
+            _ = try MemoryChunk.filter(Column("memoryID") == memoryID).deleteAll(database)
+            for chunk in chunks {
+                try chunk.insert(database)
+            }
+        }
+    }
+
+    func saveChunks(_ chunks: [MemoryChunk]) async throws {
+        guard !chunks.isEmpty else { return }
+        try await databasePool.write { database in
+            for chunk in chunks {
+                try chunk.save(database)
+            }
+        }
+    }
+
     func saveSearchIndexRecord(_ record: MemorySearchIndexRecord) async throws {
         try await databasePool.write { database in
             try record.save(database)
@@ -270,7 +342,7 @@ actor MemoryStore {
         kind: LocalAIActivityKind,
         memoryID: UUID? = nil,
         sourceCount: Int = 0,
-        modelVersion: String = GemmaMemoryAnalyzer.modelVersion
+        modelVersion: String = "deterministic-local-v1"
     ) async throws -> UUID {
         let activity = LocalAIActivity(
             id: UUID(),
@@ -479,14 +551,38 @@ actor MemoryStore {
     }
 
     func markIndexed(id: UUID, analysis: MemoryAnalysisResult) async throws {
-        try await update(id: id) { item in
+        try await databasePool.write { database in
+            guard var item = try MemoryItem.fetchOne(database, key: id) else {
+                throw MemoryStoreError.missingMemory(id)
+            }
             item.state = .indexed
-            item.title = analysis.title
-            item.summary = analysis.summary
+            if item.kind == .text {
+                let note = NoteDocument(text: analysis.extractedText)
+                item.title = note.displayTitle
+                item.summary = note.body.isEmpty ? note.displayTitle : String(note.body.prefix(1_000))
+            } else {
+                item.title = analysis.title
+                item.summary = analysis.summary
+            }
             item.extractedText = analysis.extractedText
             item.setTags(analysis.tags)
             item.processingError = nil
             item.modelVersion = analysis.modelVersion
+            item.analysisIsPartial = analysis.isPartial
+            item.updatedAt = Date()
+            try item.update(database)
+
+            _ = try MemoryChunk.filter(Column("memoryID") == id).deleteAll(database)
+            let drafts = analysis.chunks.isEmpty
+                ? MemoryChunker.legacyDrafts(for: item)
+                : analysis.chunks
+            for draft in drafts {
+                try MemoryChunk.make(
+                    memoryID: id,
+                    sourceUpdatedAt: item.updatedAt,
+                    draft: draft
+                ).insert(database)
+            }
         }
     }
 
@@ -509,6 +605,34 @@ actor MemoryStore {
             item.title = Self.normalized(title, maximumLength: 120)
             item.summary = Self.normalized(summary, maximumLength: 1_000)
             item.setTags(tags)
+        }
+    }
+
+    func updateNoteContent(id: UUID, document: NoteDocument) async throws {
+        try await databasePool.write { database in
+            guard var item = try MemoryItem.fetchOne(database, key: id) else {
+                throw MemoryStoreError.missingMemory(id)
+            }
+            item.title = String(document.displayTitle.prefix(120))
+            item.summary = document.body.isEmpty
+                ? document.displayTitle
+                : String(document.body.prefix(1_000))
+            item.userCaption = document.text
+            item.extractedText = document.text
+            item.state = .indexed
+            item.processingError = nil
+            item.analysisIsPartial = false
+            item.updatedAt = Date()
+            try item.update(database)
+
+            _ = try MemoryChunk.filter(Column("memoryID") == id).deleteAll(database)
+            for draft in MemoryChunker.legacyDrafts(for: item) {
+                try MemoryChunk.make(
+                    memoryID: id,
+                    sourceUpdatedAt: item.updatedAt,
+                    draft: draft
+                ).insert(database)
+            }
         }
     }
 
@@ -651,7 +775,7 @@ actor MemoryStore {
         }
     }
 
-    func prepareWikiCompilationQueue() async throws {
+    func prepareWikiCompilationQueue(modelVersion: String = "project-memory-current-v1") async throws {
         try await databasePool.write { database in
             let memories = try MemoryItem
                 .filter(Column("state") == MemoryProcessingState.indexed)
@@ -659,9 +783,9 @@ actor MemoryStore {
             for memory in memories {
                 if var compilation = try WikiCompilation.fetchOne(database, key: memory.id) {
                     let failedUnderOlderCompiler = compilation.status == .failed
-                        && compilation.modelVersion != GemmaLivingWikiCompiler.modelVersion
+                        && compilation.modelVersion != modelVersion
                     let discardedNoChangeUnderOlderCompiler = try compilation.status == .compiled
-                        && compilation.modelVersion != GemmaLivingWikiCompiler.modelVersion
+                        && compilation.modelVersion != modelVersion
                         && Self.latestProjectMemoryRunWasDiscardedNoChange(
                             memoryID: memory.id,
                             in: database
@@ -768,7 +892,11 @@ actor MemoryStore {
         }
     }
 
-    func markWikiCompilationFailed(memoryID: UUID, message: String) async throws {
+    func markWikiCompilationFailed(
+        memoryID: UUID,
+        message: String,
+        modelVersion: String = "project-memory-current-v1"
+    ) async throws {
         try await databasePool.write { database in
             guard var compilation = try WikiCompilation.fetchOne(database, key: memoryID) else {
                 throw LivingWikiError.missingMemory
@@ -776,7 +904,7 @@ actor MemoryStore {
             compilation.status = .failed
             compilation.completedAt = Date()
             compilation.errorMessage = String(message.prefix(500))
-            compilation.modelVersion = GemmaLivingWikiCompiler.modelVersion
+            compilation.modelVersion = modelVersion
             try compilation.update(database)
         }
     }
@@ -829,6 +957,133 @@ actor MemoryStore {
             try WikiPage
                 .order(Column("updatedAt").desc)
                 .fetchAll(database)
+        }
+    }
+
+    func fetchPendingWikiChanges() async throws -> [PendingWikiChange] {
+        try await databasePool.read { database in
+            try PendingWikiChange
+                .filter(Column("status") == PendingWikiChangeStatus.pending)
+                .order(Column("createdAt").desc)
+                .fetchAll(database)
+        }
+    }
+
+    func savePendingWikiChanges(
+        memoryID: UUID,
+        runID: UUID?,
+        pages: [WikiPageProposal],
+        modelVersion: String
+    ) async throws {
+        guard !pages.isEmpty else { return }
+        try await databasePool.write { database in
+            let encoder = JSONEncoder()
+            for page in pages {
+                let data = try encoder.encode(page)
+                let proposalJSON = String(decoding: data, as: UTF8.self)
+                let alreadyPending = try PendingWikiChange
+                    .filter(Column("memoryID") == memoryID)
+                    .filter(Column("status") == PendingWikiChangeStatus.pending)
+                    .filter(Column("proposalJSON") == proposalJSON)
+                    .fetchCount(database) > 0
+                guard !alreadyPending else { continue }
+                let reason = page.effect == .contradicted
+                    ? "This source may conflict with the current page."
+                    : "This page is protected from automatic updates."
+                try PendingWikiChange(
+                    id: UUID(),
+                    memoryID: memoryID,
+                    runID: runID,
+                    targetPageID: page.candidateID,
+                    proposalJSON: proposalJSON,
+                    reason: reason,
+                    status: .pending,
+                    createdAt: Date(),
+                    resolvedAt: nil,
+                    modelVersion: modelVersion
+                ).insert(database)
+            }
+        }
+    }
+
+    func resolvePendingWikiChange(id: UUID, status: PendingWikiChangeStatus) async throws {
+        guard status != .pending else { return }
+        try await databasePool.write { database in
+            guard var change = try PendingWikiChange.fetchOne(database, key: id),
+                  change.status == .pending else {
+                throw LivingWikiError.changeAlreadyResolved
+            }
+            change.status = status
+            change.resolvedAt = Date()
+            try change.update(database)
+        }
+    }
+
+    func updateWikiPage(
+        id: UUID,
+        title: String,
+        summary: String,
+        aliases: [String],
+        updatePolicy: WikiPageUpdatePolicy
+    ) async throws {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty, !cleanSummary.isEmpty else { throw LivingWikiError.invalidEdit }
+        try await databasePool.write { database in
+            guard var page = try WikiPage.fetchOne(database, key: id) else { throw LivingWikiError.missingPage }
+            let previous = page
+            page.title = String(cleanTitle.prefix(100))
+            page.normalizedTitle = Self.normalizedWikiTitle(cleanTitle)
+            page.summary = String(cleanSummary.prefix(1_500))
+            page.aliasesJSON = WikiPage.encodeAliases(aliases)
+            page.updatePolicy = updatePolicy
+            page.updatedAt = Date()
+            page.revisionNumber += 1
+            try page.update(database)
+            try Self.insertWikiRevision(
+                page: page,
+                runID: nil,
+                memoryID: nil,
+                effect: .updated,
+                previousSummary: previous.summary,
+                rationale: "Edited by the user.",
+                modelVersion: "human-edit-v1",
+                previousPage: previous,
+                origin: .user,
+                at: page.updatedAt,
+                in: database
+            )
+        }
+    }
+
+    func undoLatestWikiPageChange(id: UUID) async throws {
+        try await databasePool.write { database in
+            guard let current = try WikiPage.fetchOne(database, key: id) else { throw LivingWikiError.missingPage }
+            guard let revision = try WikiRevision
+                .filter(Column("pageID") == id)
+                .filter(Column("previousPageJSON") != nil)
+                .order(Column("revisionNumber").desc)
+                .fetchOne(database),
+                let json = revision.previousPageJSON,
+                var restored = try? JSONDecoder().decode(WikiPage.self, from: Data(json.utf8)) else {
+                throw LivingWikiError.nothingToUndo
+            }
+            restored.updatedAt = Date()
+            restored.revisionNumber = current.revisionNumber + 1
+            try restored.update(database)
+            try Self.insertWikiRevision(
+                page: restored,
+                runID: nil,
+                memoryID: nil,
+                effect: .updated,
+                previousSummary: current.summary,
+                rationale: "Restored the previous version.",
+                modelVersion: "human-undo-v1",
+                previousPage: current,
+                origin: .undo,
+                at: restored.updatedAt,
+                in: database
+            )
         }
     }
 
@@ -959,10 +1214,18 @@ actor MemoryStore {
         sourceUpdatedAt: Date,
         proposal: WikiCompilationProposal,
         allowedCandidateIDs: Set<UUID>,
+        modelVersion: String = "project-memory-current-v1",
         runID: UUID? = nil,
-        runCompletion: ProjectMemoryRunCompletion? = nil
+        runCompletion: ProjectMemoryRunCompletion? = nil,
+        resolvingPendingChangeID: UUID? = nil
     ) async throws {
         try await databasePool.write { database in
+            if let resolvingPendingChangeID {
+                guard let change = try PendingWikiChange.fetchOne(database, key: resolvingPendingChangeID),
+                      change.status == .pending else {
+                    throw LivingWikiError.changeAlreadyResolved
+                }
+            }
             guard let memory = try MemoryItem.fetchOne(database, key: memoryID) else {
                 throw LivingWikiError.missingMemory
             }
@@ -979,6 +1242,7 @@ actor MemoryStore {
                           var existing = try WikiPage.fetchOne(database, key: candidateID) else {
                         throw LivingWikiError.missingPage
                     }
+                    let previousPage = existing
                     let previousSummary = existing.summary
                     existing.summary = String(proposedPage.summary.prefix(1_500))
                     existing.mergeAliases([proposedPage.title] + proposedPage.aliases)
@@ -993,6 +1257,8 @@ actor MemoryStore {
                         effect: effect,
                         previousSummary: previousSummary,
                         rationale: proposedPage.rationale,
+                        modelVersion: modelVersion,
+                        previousPage: previousPage,
                         at: now,
                         in: database
                     )
@@ -1002,6 +1268,7 @@ actor MemoryStore {
                         .filter(Column("kind") == proposedPage.kind)
                         .filter(Column("normalizedTitle") == normalizedTitle)
                         .fetchOne(database) {
+                        let previousPage = existing
                         let previousSummary = existing.summary
                         existing.summary = String(proposedPage.summary.prefix(1_500))
                         existing.mergeAliases(proposedPage.aliases)
@@ -1017,6 +1284,8 @@ actor MemoryStore {
                             effect: effect,
                             previousSummary: previousSummary,
                             rationale: proposedPage.rationale,
+                            modelVersion: modelVersion,
+                            previousPage: previousPage,
                             at: now,
                             in: database
                         )
@@ -1042,6 +1311,8 @@ actor MemoryStore {
                             effect: effect,
                             previousSummary: nil,
                             rationale: proposedPage.rationale,
+                            modelVersion: modelVersion,
+                            previousPage: nil,
                             at: now,
                             in: database
                         )
@@ -1086,7 +1357,7 @@ actor MemoryStore {
             compilation.status = .compiled
             compilation.completedAt = now
             compilation.errorMessage = nil
-            compilation.modelVersion = GemmaLivingWikiCompiler.modelVersion
+            compilation.modelVersion = modelVersion
             try compilation.save(database)
 
             if let runID, let runCompletion {
@@ -1095,6 +1366,12 @@ actor MemoryStore {
                     completion: runCompletion,
                     in: database
                 )
+            }
+            if let resolvingPendingChangeID,
+               var change = try PendingWikiChange.fetchOne(database, key: resolvingPendingChangeID) {
+                change.status = .accepted
+                change.resolvedAt = now
+                try change.update(database)
             }
         }
     }
@@ -1131,10 +1408,13 @@ actor MemoryStore {
     nonisolated private static func insertWikiRevision(
         page: WikiPage,
         runID: UUID?,
-        memoryID: UUID,
+        memoryID: UUID?,
         effect: WikiChangeKind,
         previousSummary: String?,
         rationale: String,
+        modelVersion: String,
+        previousPage: WikiPage?,
+        origin: WikiRevisionOrigin = .model,
         at date: Date,
         in database: Database
     ) throws {
@@ -1149,9 +1429,16 @@ actor MemoryStore {
             newSummary: page.summary,
             rationale: String(rationale.prefix(500)),
             createdAt: date,
-            modelVersion: GemmaLivingWikiCompiler.modelVersion
+            modelVersion: modelVersion,
+            origin: origin,
+            previousPageJSON: previousPage.flatMap(Self.encodeWikiPage),
+            newPageJSON: Self.encodeWikiPage(page)
         )
         try revision.insert(database)
+    }
+
+    nonisolated private static func encodeWikiPage(_ page: WikiPage) -> String? {
+        (try? JSONEncoder().encode(page)).map { String(decoding: $0, as: UTF8.self) }
     }
 
     nonisolated private static func normalizedWikiTitle(_ value: String) -> String {

@@ -23,14 +23,42 @@ final class RememberUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testThreeSurfaceNavigationAndTemporaryAI() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.buttons["Memories"].waitForExistence(timeout: 3))
+        XCTAssertTrue(tabBar.buttons["Project"].exists)
+        XCTAssertTrue(tabBar.buttons["Settings"].exists)
+        XCTAssertEqual(tabBar.buttons.count, 3)
+
+        let aiHelp = app.buttons["AI Help"]
+        XCTAssertTrue(aiHelp.exists)
+        aiHelp.tap()
+
+        XCTAssertTrue(app.navigationBars["AI Help"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Ask your memories"].exists)
+        let composer = app.textFields["Ask about what you saved"]
+        composer.tap()
+        composer.typeText("temporary draft")
+        app.buttons["Close"].tap()
+        XCTAssertTrue(app.navigationBars["Remember"].waitForExistence(timeout: 3))
+
+        aiHelp.tap()
+        XCTAssertTrue(app.navigationBars["AI Help"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.textFields["Ask about what you saved"].value as? String, "Ask about what you saved")
+        app.buttons["Close"].tap()
+
+        let addMemory = app.buttons["Add a memory"]
+        XCTAssertTrue(addMemory.exists)
+        addMemory.tap()
+        XCTAssertTrue(app.buttons["New Note"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Take Photo"].exists)
+        XCTAssertTrue(app.buttons["Choose Photo"].exists)
+        XCTAssertTrue(app.buttons["Import File"].exists)
+        XCTAssertTrue(app.buttons["Save Link"].exists)
+        XCTAssertTrue(app.buttons["Record Voice"].exists)
     }
 
     @MainActor

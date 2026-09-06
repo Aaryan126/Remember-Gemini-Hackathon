@@ -11,23 +11,111 @@ import Testing
 
 struct RememberTests {
 
-    @Test func validatesCompleteModelDirectory() throws {
-        let directory = try makeTemporaryModelDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+    @Test func noteDocumentSeparatesAHeadlineFromItsBody() {
+        let note = NoteDocument(text: "Trip ideas\nVisit Kyoto\nBook a hotel")
 
-        try GemmaModelBundle.validate(directory: directory)
+        #expect(note.title == "Trip ideas")
+        #expect(note.body == "Visit Kyoto\nBook a hotel")
+        #expect(note.text == "Trip ideas\nVisit Kyoto\nBook a hotel")
+        #expect(NoteDocument(title: "  Trip ideas  ", body: "  Visit Kyoto  ").text == "Trip ideas\nVisit Kyoto")
     }
 
-    @Test func reportsMissingRequiredModelFile() throws {
-        let directory = try makeTemporaryModelDirectory(excluding: "model.safetensors")
-        defer { try? FileManager.default.removeItem(at: directory) }
+    @Test func chunksLongDocumentsWithStableLocatorsAndOverlap() {
+        let paragraphs = (1...18).map { index in
+            "Paragraph \(index). " + String(repeating: "useful project evidence ", count: 8)
+        }.joined(separator: "\n\n")
 
-        do {
-            try GemmaModelBundle.validate(directory: directory)
-            Issue.record("Expected validation to reject the incomplete model directory")
-        } catch GemmaInferenceError.missingModelFile(let filename) {
-            #expect(filename == "model.safetensors")
-        }
+        let chunks = MemoryTextChunker.chunks(
+            from: paragraphs,
+            locatorPrefix: "PDF page 7",
+            extractionMethod: .pdfText
+        )
+
+        #expect(chunks.count > 1)
+        #expect(chunks.map(\.ordinal) == Array(chunks.indices))
+        #expect(chunks.allSatisfy { $0.locator.hasPrefix("PDF page 7") })
+        #expect(chunks.allSatisfy { !$0.text.isEmpty && $0.text.count <= 1_200 })
+    }
+
+    @Test func imageClassificationBecomesSearchableEvidenceAndBasicModeMetadata() {
+        let labels = VisionImageClassifier.normalizedLabels([
+            VisionImageLabel(identifier: " pet ", confidence: 0.72),
+            VisionImageLabel(identifier: "cat, true cat", confidence: 0.96),
+            VisionImageLabel(identifier: "CAT, TRUE CAT", confidence: 0.80),
+            VisionImageLabel(identifier: "", confidence: 0.99),
+            VisionImageLabel(identifier: "noise", confidence: .nan),
+        ])
+        #expect(labels.map(\.identifier) == ["cat, true cat", "pet"])
+
+        let extracted = MemoryContentExtractor.imageContent(
+            recognizedText: "Milo",
+            visualLabels: labels
+        )
+        #expect(extracted.text.contains("cat, true cat"))
+        #expect(extracted.text.contains("Milo"))
+        #expect(extracted.chunks.map(\.locator) == ["Image labels", "Image text"])
+        #expect(extracted.chunks.map(\.extractionMethod) == [.visionClassification, .visionOCR])
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let memory = MemoryItem(
+            id: UUID(),
+            kind: .image,
+            createdAt: now,
+            importedAt: now,
+            updatedAt: now,
+            state: .processing,
+            originalFilename: "cat.jpg",
+            userCaption: nil,
+            title: nil,
+            summary: nil,
+            extractedText: nil,
+            tagsJSON: "[]",
+            processingError: nil,
+            modelVersion: nil
+        )
+        let result = DeterministicMemoryAnalyzer.result(memory: memory, extracted: extracted)
+        #expect(result.title == "Cat")
+        #expect(result.tags == ["cat", "pet"])
+    }
+
+    @Test func citationVerifierRequiresAnExactSourceExcerpt() {
+        let source = "The approved primary brand color is cobalt blue."
+
+        #expect(GroundedEvidenceVerifier.quoteAppears("primary brand color is cobalt blue", in: source))
+        #expect(!GroundedEvidenceVerifier.quoteAppears("Primary brand color is cobalt blue", in: source))
+        #expect(!GroundedEvidenceVerifier.quoteAppears("primary brand color is orange", in: source))
+        #expect(!GroundedEvidenceVerifier.quoteAppears("the", in: source))
+    }
+
+
+    @Test func openAIGroundedQuoteParserRequiresStructuredClaims() {
+        let response = #"{"claims":[{"evidence_id":"e2","evidence_quote":"The chosen color is cobalt blue."}]}"#
+        #expect(OpenAIGroundedQuoteParser.parse(response: response) == [
+            OpenAIGroundedQuoteParser.Claim(
+                evidenceID: "E2",
+                evidenceQuote: "The chosen color is cobalt blue."
+            ),
+        ])
+        #expect(OpenAIGroundedQuoteParser.parse(response: "not json").isEmpty)
+    }
+    @Test func openAIExtractiveFallbackRequiresOneSourceAndStrongQuestionOverlap() {
+        let match = OpenAIExtractiveFallback.bestMatch(
+            question: "Which room is the workshop in?",
+            sourceTexts: ["DESIGN WORKSHOP — ROOM B-214 — 2:30 PM"]
+        )
+        #expect(match == OpenAIExtractiveFallback.Match(
+            sourceIndex: 0,
+            quote: "DESIGN WORKSHOP — ROOM B-214 — 2:30 PM"
+        ))
+
+        #expect(OpenAIExtractiveFallback.bestMatch(
+            question: "What does appendix C require?",
+            sourceTexts: ["The document was only partially extracted. Appendix C was not readable."]
+        ) == nil)
+        #expect(OpenAIExtractiveFallback.bestMatch(
+            question: "What price did we settle on?",
+            sourceTexts: ["The price was $9.", "The price was later changed to $12."]
+        ) == nil)
     }
 
     @Test func assistantMarkdownRendersEmphasisAndListMarkers() throws {
@@ -41,43 +129,6 @@ struct RememberTests {
         #expect(rendered.runs.contains { run in
             run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
         })
-    }
-
-    @Test func askSuggestionsUseProjectMemoryPagesBeforeFallbacks() {
-        let now = Date()
-        let pages = [
-            wikiPage(
-                kind: .project,
-                title: "Remember iOS App",
-                summary: "A private project memory.",
-                aliases: [],
-                updatedAt: now
-            ),
-            wikiPage(
-                kind: .openQuestion,
-                title: "Model delivery",
-                summary: "How the model should reach the phone.",
-                aliases: [],
-                updatedAt: now
-            ),
-            wikiPage(
-                kind: .constraint,
-                title: "iPhone memory ceiling",
-                summary: "Inference must remain below the device limit.",
-                aliases: [],
-                updatedAt: now
-            ),
-        ]
-
-        let questions = AskSuggestionBuilder.questions(for: pages)
-
-        #expect(questions.count == 3)
-        #expect(questions[0].contains("Remember iOS App"))
-        #expect(questions[1].contains("Model delivery"))
-        #expect(questions[2].contains("iPhone memory ceiling"))
-        #expect(AskSuggestionBuilder.questions(for: [], limit: 1) == [
-            "What are the most important project decisions?"
-        ])
     }
 
     @Test func savesImageAndMetadataToCaptureInbox() throws {
@@ -117,6 +168,53 @@ struct RememberTests {
         #expect(saved.kind == .text)
         #expect(saved.caption == "Call the dentist tomorrow.")
         #expect(try String(contentsOf: inbox.payloadURL(for: saved), encoding: .utf8) == saved.caption)
+    }
+
+    @Test func inAppCaptureTrimsAndBoundsNotes() throws {
+        let container = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let inbox = CaptureInbox(containerURL: container)
+        let service = InAppCaptureService(inbox: inbox)
+        let oversized = "  " + String(repeating: "a", count: InAppCaptureService.maximumNoteLength + 50) + "  "
+
+        try service.saveNote(oversized)
+
+        let record = try #require(inbox.records().first)
+        let savedText = try String(contentsOf: inbox.payloadURL(for: record), encoding: .utf8)
+        #expect(record.kind == .text)
+        #expect(savedText.count == InAppCaptureService.maximumNoteLength)
+        #expect(savedText.allSatisfy { $0 == "a" })
+    }
+
+    @Test func inAppCaptureRejectsEmptyNotesAndNonWebLinks() throws {
+        let container = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let service = InAppCaptureService(inbox: CaptureInbox(containerURL: container))
+
+        #expect(throws: InAppCaptureError.emptyNote) {
+            try service.saveNote(" \n ")
+        }
+        #expect(throws: InAppCaptureError.invalidLink) {
+            try service.saveLink("javascript:alert(1)", context: nil)
+        }
+    }
+
+    @Test func inAppCaptureImportsPlainTextFiles() throws {
+        let container = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let source = container.appendingPathComponent("project-notes.txt")
+        try Data("  Decision: keep capture local.  ".utf8).write(to: source)
+        let inbox = CaptureInbox(containerURL: container)
+        let service = InAppCaptureService(inbox: inbox)
+
+        try service.saveImportedFile(from: source)
+
+        let record = try #require(inbox.records().first)
+        #expect(record.kind == .text)
+        #expect(record.caption == "Decision: keep capture local.")
     }
 
     @Test func savesLinkCaptureWithoutFetchingIt() throws {
@@ -259,7 +357,50 @@ struct RememberTests {
         #expect(updated?.extractedText == "$12.00")
     }
 
-    @Test func parsesGemmaJSONEvenWhenWrappedInMarkdown() {
+    @Test func memoryStorePersistsEditedNoteContentAndRefreshesItsChunks() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try MemoryStore(databaseURL: root.appendingPathComponent("remember.sqlite"))
+        let id = UUID()
+        let now = Date()
+        let item = MemoryItem(
+            id: id,
+            kind: .text,
+            createdAt: now,
+            importedAt: now,
+            updatedAt: now,
+            state: .indexed,
+            originalFilename: "\(id.uuidString).txt",
+            userCaption: "Old note",
+            title: "Old note",
+            summary: "Old note",
+            extractedText: "Old note",
+            tagsJSON: "[]",
+            processingError: nil,
+            modelVersion: "test-model"
+        )
+        try await store.insertIfNeeded(item)
+
+        let document = NoteDocument(
+            title: "Trip ideas",
+            body: "Visit Kyoto\nBook a hotel"
+        )
+        try await store.updateNoteContent(id: id, document: document)
+
+        let updated = try await store.fetch(id: id)
+        #expect(updated?.title == "Trip ideas")
+        #expect(updated?.summary == "Visit Kyoto\nBook a hotel")
+        #expect(updated?.userCaption == document.text)
+        #expect(updated?.extractedText == document.text)
+        #expect(updated?.state == .indexed)
+
+        let chunks = try await store.fetchChunks(memoryID: id)
+        #expect(chunks.count == 1)
+        #expect(chunks.first?.text == document.text)
+        #expect(chunks.first?.locator == "Saved note")
+    }
+
+    @Test func parsesMemoryAnalysisJSONEvenWhenWrappedInMarkdown() {
         let result = MemoryAnalysisParser.parse(
             response: """
                 ```json
@@ -291,7 +432,7 @@ struct RememberTests {
         #expect(result.tags.isEmpty)
     }
 
-    @Test func gemmaExpandedSearchRanksRelevantMemoryAndPersistsIndex() async throws {
+    @Test func expandedSearchRanksRelevantMemoryAndPersistsProviderNeutralIndex() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try MemoryStore(databaseURL: root.appendingPathComponent("remember.sqlite"))
@@ -329,7 +470,7 @@ struct RememberTests {
         let records = try await store.fetchSearchIndexRecords()
         #expect(records.count == 2)
         #expect(records.allSatisfy { $0.embeddingData == nil })
-        #expect(records.allSatisfy { $0.embeddingModel.contains("gemma-4") })
+        #expect(records.allSatisfy { $0.embeddingModel == "remember-memory-fields-v2" })
     }
 
     @Test func searchFiltersByTypeDateAndTagWithoutAQuery() async throws {
@@ -440,13 +581,9 @@ struct RememberTests {
         #expect(EmbeddingVectorCodec.cosineSimilarity([1, 0], [0, 1]) == 0)
     }
 
-    @Test func parsesGemmaQueryExpansionAndBoundsTerms() {
-        let terms = GemmaQueryExpansionParser.parse(
-            response: """
-                ```json
-                {"terms":["Lecture room","seminar","University","seminar",""]}
-                ```
-                """,
+    @Test func parsesOpenAIQueryExpansionAndBoundsTerms() {
+        let terms = OpenAIQueryExpansionParser.parse(
+            response: #"{"terms":["Lecture room","seminar","University","seminar",""]}"#,
             fallbackQuery: "where is class"
         )
 
@@ -578,505 +715,6 @@ struct RememberTests {
 
         #expect(filename == "\(id.uuidString).m4a")
         #expect(try Data(contentsOf: store.url(for: filename)) == bytes)
-    }
-
-    @Test func livingWikiCandidateIndexPrioritizesNamesAliasesAndEvidenceOverlap() {
-        let now = Date()
-        let memory = indexedMemory(
-            kind: .text,
-            createdAt: now,
-            title: "Remember iPhone architecture",
-            summary: "The Remember project uses private on-device AI and Gemma.",
-            tags: ["mlx", "privacy"]
-        )
-        let remember = wikiPage(
-            kind: .project,
-            title: "Remember",
-            summary: "A private memory app for iPhone.",
-            aliases: ["Remember app"],
-            updatedAt: now
-        )
-        let localAI = wikiPage(
-            kind: .concept,
-            title: "On-device AI",
-            summary: "Models that process data locally.",
-            aliases: ["local AI"],
-            updatedAt: now.addingTimeInterval(-1)
-        )
-        let restaurant = wikiPage(
-            kind: .concept,
-            title: "Sushi restaurants",
-            summary: "Places to eat dinner.",
-            aliases: [],
-            updatedAt: now
-        )
-        let thermalBudget = wikiPage(
-            kind: .constraint,
-            title: "Thermal budget",
-            summary: "A device execution constraint.",
-            aliases: [],
-            updatedAt: now
-        )
-        let graphLink = WikiPageLink(
-            sourcePageID: localAI.id,
-            targetPageID: thermalBudget.id,
-            rationale: "Local inference is constrained by sustained device load.",
-            createdAt: now
-        )
-
-        let candidates = LivingWikiCandidateIndex.candidates(
-            for: memory,
-            from: [restaurant, thermalBudget, localAI, remember],
-            links: [graphLink]
-        )
-
-        #expect(candidates.first?.page.id == localAI.id)
-        #expect(candidates.contains(where: { $0.page.id == remember.id }))
-        #expect(candidates.contains(where: { $0.page.id == thermalBudget.id }))
-        #expect(!candidates.contains(where: { $0.page.id == restaurant.id }))
-    }
-
-    @Test func livingWikiCandidateIndexUsesSemanticsWithoutLosingExactSignals() {
-        let now = Date()
-        let memory = indexedMemory(
-            kind: .text,
-            createdAt: now,
-            title: "Inference architecture",
-            summary: "All personal processing remains inside the handset.",
-            tags: []
-        )
-        let onDevice = wikiPage(
-            kind: .concept,
-            title: "On-device AI",
-            summary: "Private local model execution.",
-            aliases: ["local inference"],
-            updatedAt: now
-        )
-        let unrelated = wikiPage(
-            kind: .concept,
-            title: "Restaurant ideas",
-            summary: "Places to eat.",
-            aliases: [],
-            updatedAt: now
-        )
-
-        let candidates = LivingWikiCandidateIndex.candidates(
-            for: memory,
-            from: [unrelated, onDevice],
-            semanticScores: [onDevice.id: 0.91, unrelated.id: 0.08]
-        )
-
-        #expect(candidates.map(\.page.id) == [onDevice.id])
-    }
-
-    @Test func livingWikiParserRejectsInventedCandidateIDs() throws {
-        let allowedID = UUID()
-        let inventedID = UUID()
-        let response = """
-            ```json
-            {"pages":[
-              {"candidate_id":"\(allowedID.uuidString)","type":"project","title":"Remember","summary":"An on-device memory app.","aliases":["Remember app"],"effect":"updated","rationale":"Adds an implementation detail.","related_candidate_ids":[]},
-              {"candidate_id":"\(inventedID.uuidString)","type":"concept","title":"Invented","summary":"Must be discarded.","aliases":[],"effect":"updated","rationale":"Unsafe reference.","related_candidate_ids":[]}
-            ]}
-            ```
-            """
-
-        let proposal = try WikiCompilationParser.parse(
-            response: response,
-            allowedCandidateIDs: [allowedID]
-        )
-
-        #expect(proposal.pages.count == 1)
-        #expect(proposal.pages.first?.candidateID == allowedID)
-    }
-
-    @Test func livingWikiParserFindsBalancedPayloadAmongProseAndBraces() throws {
-        let candidateID = UUID()
-        let response = """
-            I considered this shape first: {not valid JSON}.
-            ```json
-            {"pages":[{"candidate_id":"\(candidateID.uuidString)","type":"decision","title":"Use local JSON","summary":"Keep {structured} output on-device, even when a quoted brace appears.","aliases":[],"effect":"updated","rationale":"The source confirms the local boundary.","related_candidate_ids":[]}]}
-            ```
-            Diagnostic object: {"ignored":true}
-            """
-
-        let proposal = try WikiCompilationParser.parse(
-            response: response,
-            allowedCandidateIDs: [candidateID]
-        )
-
-        #expect(proposal.pages.count == 1)
-        #expect(proposal.pages.first?.candidateID == candidateID)
-        #expect(proposal.pages.first?.summary.contains("{structured}") == true)
-    }
-
-    @Test func livingWikiParserContainsMalformedRepairAsSafeNoChange() {
-        let result = WikiCompilationParser.parseOrNoChange(
-            response: "I still did not return the requested object.",
-            allowedCandidateIDs: []
-        )
-
-        #expect(result.proposal.pages.isEmpty)
-        #expect(result.recovery == .noChange)
-    }
-
-    @Test func evidenceOnlyRecoveryCanSafelyLinkOneRetrievedPage() throws {
-        let existing = wikiPage(
-            kind: .constraint,
-            title: "Hackathon submission rules",
-            summary: "The submission must satisfy the published hackathon requirements.",
-            aliases: [],
-            updatedAt: Date()
-        )
-
-        let recovered = try #require(LivingWikiEvidenceRecovery.proposal(candidates: [
-            WikiCandidate(page: existing, score: 0.52),
-        ]))
-        let page = try #require(recovered.pages.first)
-
-        #expect(recovered.pages.count == 1)
-        #expect(page.candidateID == existing.id)
-        #expect(page.summary == existing.summary)
-        #expect(page.effect == .related)
-        #expect(LivingWikiEvidenceRecovery.proposal(candidates: [
-            WikiCandidate(page: existing, score: 0.119),
-        ]) == nil)
-    }
-
-    @Test func livingWikiCompilationIsVersionedLinkedAndIdempotentlyQueued() async throws {
-        let root = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = try MemoryStore(databaseURL: root.appendingPathComponent("remember.sqlite"))
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let first = indexedMemory(
-            kind: .text,
-            createdAt: now.addingTimeInterval(-10),
-            title: "Remember plan",
-            summary: "Build a private on-device memory app.",
-            tags: ["project"]
-        )
-        let second = indexedMemory(
-            kind: .text,
-            createdAt: now,
-            title: "Remember model choice",
-            summary: "Use Gemma instead of a hosted API.",
-            tags: ["decision"]
-        )
-        try await store.insertIfNeeded(first)
-        try await store.insertIfNeeded(second)
-        try await store.prepareWikiCompilationQueue()
-        #expect(try await store.fetchWikiQueueSummary().pending == 2)
-
-        #expect(try await store.claimNextWikiCompilation()?.id == first.id)
-        let initial = WikiCompilationProposal(pages: [
-            WikiPageProposal(
-                candidateID: nil,
-                kind: .project,
-                title: "Remember",
-                summary: "A private on-device memory app.",
-                aliases: ["Remember app"],
-                effect: .introduced,
-                rationale: "The source establishes the project and its goal.",
-                relatedCandidateIDs: []
-            ),
-            WikiPageProposal(
-                candidateID: nil,
-                kind: .concept,
-                title: "On-device AI",
-                summary: "AI processing that remains on the user's device.",
-                aliases: ["local AI"],
-                effect: .introduced,
-                rationale: "The project depends on local inference.",
-                relatedCandidateIDs: []
-            ),
-        ])
-        try await store.applyWikiCompilation(
-            memoryID: first.id,
-            sourceUpdatedAt: first.updatedAt,
-            proposal: initial,
-            allowedCandidateIDs: []
-        )
-
-        let createdPages = try await store.fetchWikiPages()
-        let project = try #require(createdPages.first(where: { $0.kind == .project }))
-        let concept = try #require(createdPages.first(where: { $0.kind == .concept }))
-        #expect(try await store.claimNextWikiCompilation()?.id == second.id)
-        let update = WikiCompilationProposal(pages: [
-            WikiPageProposal(
-                candidateID: project.id,
-                kind: .project,
-                title: "Remember",
-                summary: "A private on-device memory app using Gemma rather than a hosted model.",
-                aliases: [],
-                effect: .updated,
-                rationale: "The source records the model architecture decision.",
-                relatedCandidateIDs: [concept.id]
-            ),
-        ])
-        try await store.applyWikiCompilation(
-            memoryID: second.id,
-            sourceUpdatedAt: second.updatedAt,
-            proposal: update,
-            allowedCandidateIDs: [project.id, concept.id]
-        )
-
-        let snapshot = try #require(try await store.fetchWikiPageSnapshot(id: project.id))
-        #expect(snapshot.page.revisionNumber == 2)
-        #expect(snapshot.evidence.count == 2)
-        #expect(snapshot.revisions.map(\.revisionNumber) == [2, 1])
-        #expect(snapshot.linkedPages.map(\.page.id) == [concept.id])
-        #expect(try await store.fetchWikiEvidenceMemories(pageIDs: [project.id]).map(\.id) == [second.id, first.id])
-        #expect(try await store.fetchWikiQueueSummary().pending == 0)
-
-        try await store.prepareWikiCompilationQueue()
-        #expect(try await store.fetchWikiQueueSummary().pending == 0)
-    }
-
-    @Test func projectMemoryProgramExposesProjectSpecificSchema() {
-        let program = ProjectMemoryProgram.current
-
-        #expect(program.name == "Private Project Memory")
-        #expect(program.pageKinds.contains(.decision))
-        #expect(program.pageKinds.contains(.experiment))
-        #expect(program.pageKinds.contains(.feedback))
-        #expect(program.pageKinds.contains(.person))
-        #expect(program.promptTypeList.contains("open_question"))
-    }
-
-    @Test func protectedPatchEvaluatorKeepsSafePatchAndConsolidatesDuplicateTargets() {
-        let validPage = WikiPageProposal(
-            candidateID: nil,
-            kind: .decision,
-            title: "Use local inference",
-            summary: "The project uses local Gemma inference.",
-            aliases: [],
-            effect: .introduced,
-            rationale: "The source explicitly records the model choice.",
-            relatedCandidateIDs: []
-        )
-
-        let kept = ProjectMemoryPatchEvaluator.evaluate(
-            proposal: WikiCompilationProposal(pages: [validPage]),
-            allowedCandidateIDs: []
-        )
-        let consolidated = ProjectMemoryPatchEvaluator.evaluate(
-            proposal: WikiCompilationProposal(pages: [validPage, validPage]),
-            allowedCandidateIDs: []
-        )
-
-        #expect(kept.status == .kept)
-        #expect(kept.proposalToApply.pages.count == 1)
-        #expect(kept.checks.allSatisfy { $0.passed })
-        #expect(consolidated.status == .kept)
-        #expect(consolidated.proposalToApply.pages.count == 1)
-        #expect(consolidated.checks.contains { $0.checkID == "patch.semantic_duplicates" && $0.message.contains("1") })
-    }
-
-    @Test func projectMemoryLinterReportsTraceabilityAndRevisionIntegrity() {
-        let page = wikiPage(
-            kind: .project,
-            title: "Remember",
-            summary: "A private project memory.",
-            aliases: [],
-            updatedAt: Date()
-        )
-
-        let checks = ProjectMemoryLinter.checks(
-            pages: [page],
-            evidence: [],
-            revisions: [],
-            links: []
-        )
-
-        #expect(checks.contains { $0.checkID == "wiki.source_traceability" && !$0.passed })
-        #expect(checks.contains { $0.checkID == "wiki.revision_integrity" && !$0.passed })
-        #expect(checks.contains { $0.checkID == "wiki.link_integrity" && $0.passed })
-    }
-
-    @Test func researchHistoryLinksAcceptedPatchChecksAndOpenMarkdown() async throws {
-        let root = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = try MemoryStore(databaseURL: root.appendingPathComponent("remember.sqlite"))
-        let memory = indexedMemory(
-            kind: .text,
-            createdAt: Date(timeIntervalSince1970: 1_800_000_000),
-            title: "Model choice",
-            summary: "Use Gemma locally instead of a hosted API.",
-            tags: ["decision"]
-        )
-        try await store.insertIfNeeded(memory)
-        try await store.prepareWikiCompilationQueue()
-        _ = try await store.claimNextWikiCompilation()
-        let proposal = WikiCompilationProposal(pages: [
-            WikiPageProposal(
-                candidateID: nil,
-                kind: .decision,
-                title: "Use Gemma on-device",
-                summary: "The project uses Gemma on-device rather than a hosted API.",
-                aliases: [],
-                effect: .introduced,
-                rationale: "The source records the privacy architecture decision.",
-                relatedCandidateIDs: []
-            ),
-        ])
-        let decision = ProjectMemoryPatchEvaluator.evaluate(proposal: proposal, allowedCandidateIDs: [])
-        let runID = try await store.startProjectMemoryRun(
-            operation: .compile,
-            memoryID: memory.id,
-            modelVersion: "test-model",
-            promptVersion: "test-prompt"
-        )
-        try await store.applyWikiCompilation(
-            memoryID: memory.id,
-            sourceUpdatedAt: memory.updatedAt,
-            proposal: decision.proposalToApply,
-            allowedCandidateIDs: [],
-            runID: runID
-        )
-        try await store.finishProjectMemoryRun(
-            id: runID,
-            status: decision.status,
-            proposedPageCount: proposal.pages.count,
-            acceptedPageCount: decision.proposalToApply.pages.count,
-            rationale: decision.rationale,
-            checks: decision.checks
-        )
-
-        let history = try await store.fetchProjectMemoryHistory()
-        let run = try #require(history.first)
-        #expect(run.run.status == .kept)
-        #expect(run.memoryTitle == "Model choice")
-        #expect(run.checks.count == 7)
-        #expect(run.changes.first?.pageTitle == "Use Gemma on-device")
-
-        let markdown = ProjectMemoryMarkdownRenderer.render(
-            pages: try await store.fetchAllWikiPageSnapshots(),
-            history: history,
-            generatedAt: Date(timeIntervalSince1970: 1_800_000_100)
-        )
-        #expect(markdown.contains("format: remember-project-memory"))
-        #expect(markdown.contains("# Project Memory"))
-        #expect(markdown.contains("Use Gemma on-device"))
-        #expect(markdown.contains("## Research History"))
-        #expect(markdown.contains("test-prompt"))
-    }
-
-    @Test func projectMemoryQualityBenchmarkRejectsRuleMisclassifiedAsProject() {
-        let proposal = WikiPageProposal(
-            candidateID: nil,
-            kind: .project,
-            title: "Hackathon Submission Rules",
-            summary: "Submissions must include a repository, project name, description, demo video, and selected tracks.",
-            aliases: [],
-            effect: .introduced,
-            rationale: "The source lists required submission material.",
-            relatedCandidateIDs: []
-        )
-
-        let decision = ProjectMemoryPatchEvaluator.evaluate(
-            proposal: WikiCompilationProposal(pages: [proposal]),
-            allowedCandidateIDs: []
-        )
-
-        #expect(decision.status == .discarded)
-        #expect(decision.proposalToApply.pages.isEmpty)
-        #expect(decision.checks.contains { $0.checkID == "patch.type_suitability" && $0.message.contains("1") })
-    }
-
-    @Test func projectMemoryQualityBenchmarkKeepsConstraintAndDecisionTypes() {
-        let pages = [
-            WikiPageProposal(
-                candidateID: nil,
-                kind: .constraint,
-                title: "Submission deadline",
-                summary: "The demo video must be submitted by 4 September.",
-                aliases: [],
-                effect: .introduced,
-                rationale: "The source states a required deadline.",
-                relatedCandidateIDs: []
-            ),
-            WikiPageProposal(
-                candidateID: nil,
-                kind: .decision,
-                title: "Use Gemma locally",
-                summary: "The app will use Gemma on-device instead of a hosted API.",
-                aliases: [],
-                effect: .introduced,
-                rationale: "The source records the chosen inference architecture.",
-                relatedCandidateIDs: []
-            ),
-        ]
-
-        let decision = ProjectMemoryPatchEvaluator.evaluate(
-            proposal: WikiCompilationProposal(pages: pages),
-            allowedCandidateIDs: []
-        )
-
-        #expect(decision.status == .kept)
-        #expect(decision.proposalToApply.pages.map(\.kind) == [.constraint, .decision])
-    }
-
-    @Test func projectMemoryQualityBenchmarkRedirectsEquivalentNewPageToCandidate() {
-        let existing = wikiPage(
-            kind: .constraint,
-            title: "Hackathon Submission Rules",
-            summary: "Hackathon submissions require a GitHub repository, project name, description, demo video, and selected tracks.",
-            aliases: ["Submission guidelines"],
-            updatedAt: Date()
-        )
-        let proposal = WikiPageProposal(
-            candidateID: nil,
-            kind: .constraint,
-            title: "Required Submission Components",
-            summary: "Submissions must include a GitHub repository, project name, short description, demo video, and selected tracks.",
-            aliases: [],
-            effect: .introduced,
-            rationale: "The source repeats and clarifies required submission material.",
-            relatedCandidateIDs: []
-        )
-
-        let decision = ProjectMemoryPatchEvaluator.evaluate(
-            proposal: WikiCompilationProposal(pages: [proposal]),
-            allowedCandidateIDs: [existing.id],
-            candidates: [WikiCandidate(page: existing, score: 0.82)]
-        )
-
-        #expect(decision.proposalToApply.pages.count == 1)
-        #expect(decision.proposalToApply.pages.first?.candidateID == existing.id)
-        #expect(decision.proposalToApply.pages.first?.title == existing.title)
-        #expect(decision.proposalToApply.pages.first?.effect == .updated)
-    }
-
-    @Test func projectMemoryQualityBenchmarkLinterFindsSemanticDuplicates() {
-        let first = wikiPage(
-            kind: .constraint,
-            title: "Hackathon Submission Rules",
-            summary: "Submissions require a GitHub repository, project name, description, demo video, and selected tracks.",
-            aliases: [],
-            updatedAt: Date()
-        )
-        let second = wikiPage(
-            kind: .constraint,
-            title: "Required Submission Components",
-            summary: "Every submission must include a GitHub repository, project name, description, demo video, and selected tracks.",
-            aliases: [],
-            updatedAt: Date()
-        )
-
-        let checks = ProjectMemoryLinter.checks(pages: [first, second], evidence: [], revisions: [], links: [])
-
-        #expect(checks.contains { $0.checkID == "wiki.semantic_uniqueness" && !$0.passed })
-    }
-
-    private func makeTemporaryModelDirectory(excluding excludedFilename: String? = nil) throws -> URL {
-        let directory = try makeTemporaryDirectory()
-
-        for filename in GemmaModelBundle.requiredFiles where filename != excludedFilename {
-            let file = directory.appendingPathComponent(filename, isDirectory: false)
-            try Data().write(to: file)
-        }
-
-        return directory
     }
 
     private func indexedMemory(

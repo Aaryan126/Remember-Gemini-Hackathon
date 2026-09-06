@@ -75,7 +75,7 @@ nonisolated struct MemorySearchIndexRecord: Codable, FetchableRecord, Persistabl
 }
 
 actor MemorySearchService {
-    private static let indexModelIdentifier = "gemma-4-generated-memory-fields-v1"
+    private static let indexModelIdentifier = "remember-memory-fields-v2"
 
     private let embeddingService: (any TextEmbedding)?
     private let memoryStore: MemoryStore
@@ -104,7 +104,10 @@ actor MemorySearchService {
                 || record?.sourceUpdatedAt != memory.updatedAt
                 || (embeddingService != nil && record?.embeddingData == nil)
         }
-        guard !staleMemories.isEmpty else { return }
+        guard !staleMemories.isEmpty else {
+            try await synchronizeChunkIndex(memories: memories)
+            return
+        }
 
         let documents = staleMemories.map(MemorySearchDocument.init(memory:))
         let embeddings: [[Float]]?
@@ -121,6 +124,7 @@ actor MemorySearchService {
             }
             try await saveIndex(memory, document: documents[index], vector: vector)
         }
+        try await synchronizeChunkIndex(memories: memories)
     }
 
     func index(_ memory: MemoryItem) async throws {
@@ -136,6 +140,41 @@ actor MemorySearchService {
             vector = nil
         }
         try await saveIndex(memory, document: document, vector: vector)
+        try await synchronizeChunkIndex(memories: [memory])
+    }
+
+    private func synchronizeChunkIndex(memories: [MemoryItem]) async throws {
+        guard !memories.isEmpty else { return }
+        let existing = try await memoryStore.fetchChunks()
+        let chunksByMemory = Dictionary(grouping: existing, by: \.memoryID)
+        let expectedModel = embeddingService?.modelIdentifier ?? Self.indexModelIdentifier
+
+        for memory in memories {
+            try Task.checkCancellation()
+            var chunks = chunksByMemory[memory.id] ?? []
+            if chunks.isEmpty || chunks.contains(where: { $0.sourceUpdatedAt != memory.updatedAt }) {
+                chunks = MemoryChunker.legacyDrafts(for: memory).map {
+                    MemoryChunk.make(memoryID: memory.id, sourceUpdatedAt: memory.updatedAt, draft: $0)
+                }
+                try await memoryStore.replaceChunks(memoryID: memory.id, with: chunks)
+            }
+            guard let embeddingService else { continue }
+            let staleIndices = chunks.indices.filter {
+                chunks[$0].embeddingData == nil || chunks[$0].embeddingModel != expectedModel
+            }
+            for batchStart in stride(from: 0, to: staleIndices.count, by: 16) {
+                try Task.checkCancellation()
+                let indices = Array(staleIndices[batchStart..<min(batchStart + 16, staleIndices.count)])
+                guard let vectors = try? await embeddingService.embed(indices.map { chunks[$0].text }) else {
+                    continue
+                }
+                for (offset, index) in indices.enumerated() where vectors.indices.contains(offset) {
+                    chunks[index].embeddingData = EmbeddingVectorCodec.encode(vectors[offset])
+                    chunks[index].embeddingModel = expectedModel
+                }
+                try await memoryStore.saveChunks(indices.map { chunks[$0] })
+            }
+        }
     }
 
     private func saveIndex(
@@ -178,6 +217,9 @@ actor MemorySearchService {
             queryEmbedding = nil
         }
 
+        let chunks = try await memoryStore.fetchChunks()
+        let chunksByMemory = Dictionary(grouping: chunks, by: \.memoryID)
+
         return memories.compactMap { memory -> MemorySearchResult? in
             guard Self.includes(memory, request: request, now: currentDate),
                   let record = recordsByID[memory.id] else {
@@ -196,13 +238,22 @@ actor MemorySearchService {
                 queryEmbedding: queryEmbedding,
                 documentEmbedding: EmbeddingVectorCodec.decode(record.embeddingData)
             )
-            guard lexicalScore > 0 || expansionScore > 0 || semanticScore > 0 else {
+            let chunkScore = (chunksByMemory[memory.id] ?? []).map { chunk in
+                let lexical = Self.lexicalCoverage(query: query, text: chunk.text)
+                let semantic = Self.semanticScore(
+                    queryEmbedding: queryEmbedding,
+                    documentEmbedding: EmbeddingVectorCodec.decode(chunk.embeddingData)
+                )
+                return semantic > 0 ? (lexical * 0.35) + (semantic * 0.65) : lexical
+            }.max() ?? 0
+            guard lexicalScore > 0 || expansionScore > 0 || semanticScore > 0 || chunkScore > 0 else {
                 return nil
             }
 
             let lexicalBest = max(lexicalScore, expansionScore)
-            let score = semanticScore > 0
-                ? min(1, (lexicalBest * 0.45) + (semanticScore * 0.55))
+            let semanticBest = max(semanticScore, chunkScore)
+            let score = semanticBest > 0
+                ? min(1, (lexicalBest * 0.35) + (semanticBest * 0.65))
                 : min(1, (lexicalScore * 0.55) + (expansionScore * 0.45))
             return MemorySearchResult(memory: memory, score: score)
         }
@@ -211,6 +262,48 @@ actor MemorySearchService {
                 return left.score > right.score
             }
             return left.memory.createdAt > right.memory.createdAt
+        }
+        .prefix(max(1, limit))
+        .map { $0 }
+    }
+
+    func searchEvidence(
+        _ request: MemorySearchRequest,
+        restrictedTo memoryIDs: Set<UUID>? = nil,
+        limit: Int = 20
+    ) async throws -> [MemoryEvidenceExcerpt] {
+        try await synchronizeIndex()
+        let query = request.normalizedQuery
+        guard !query.isEmpty else { return [] }
+        let memories = try await memoryStore.fetchIndexed().filter {
+            Self.includes($0, request: request, now: now())
+                && (memoryIDs?.contains($0.id) ?? true)
+        }
+        let memoryByID = Dictionary(uniqueKeysWithValues: memories.map { ($0.id, $0) })
+        let queryEmbedding: [Float]?
+        if let embeddingService {
+            queryEmbedding = try? await embeddingService.embed([query]).first
+        } else {
+            queryEmbedding = nil
+        }
+
+        return try await memoryStore.fetchChunks().compactMap { chunk in
+            guard let memory = memoryByID[chunk.memoryID] else { return nil }
+            let lexical = Self.lexicalCoverage(query: query, text: chunk.text)
+            let semantic = Self.semanticScore(
+                queryEmbedding: queryEmbedding,
+                documentEmbedding: EmbeddingVectorCodec.decode(chunk.embeddingData)
+            )
+            guard lexical > 0 || semantic > 0 else { return nil }
+            let score = semantic > 0 ? (lexical * 0.35) + (semantic * 0.65) : lexical
+            return MemoryEvidenceExcerpt(chunk: chunk, memory: memory, score: min(1, score))
+        }
+        .sorted { left, right in
+            if abs(left.score - right.score) > 0.000_1 { return left.score > right.score }
+            if left.memory.createdAt != right.memory.createdAt {
+                return left.memory.createdAt > right.memory.createdAt
+            }
+            return left.chunk.ordinal < right.chunk.ordinal
         }
         .prefix(max(1, limit))
         .map { $0 }
@@ -256,6 +349,15 @@ actor MemorySearchService {
             normalized($0).contains(normalizedQuery) || queryTokens.contains(normalized($0))
         }) ? 0.15 : 0
         return min(1, (coverage * 0.5) + phraseBoost + titleBoost + tagBoost)
+    }
+
+    private nonisolated static func lexicalCoverage(query: String, text: String) -> Double {
+        let queryTokens = Set(tokens(in: normalized(query)))
+        guard !queryTokens.isEmpty else { return 0 }
+        let document = normalized(text)
+        let matched = queryTokens.intersection(Set(tokens(in: document))).count
+        let phraseBoost = document.contains(normalized(query)) ? 0.25 : 0
+        return min(1, (Double(matched) / Double(queryTokens.count)) * 0.75 + phraseBoost)
     }
 
     private nonisolated static func semanticScore(

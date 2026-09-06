@@ -44,6 +44,18 @@ nonisolated struct LibraryFileStore: Sendable {
         directoryURL.appendingPathComponent(filename, isDirectory: false)
     }
 
+    func replaceText(_ text: String, filename: String) throws {
+        let root = directoryURL.standardizedFileURL
+        let target = url(for: filename).standardizedFileURL
+        guard target.deletingLastPathComponent() == root else {
+            return
+        }
+        try Data(text.utf8).write(
+            to: target,
+            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        )
+    }
+
     func remove(filename: String) throws {
         let root = directoryURL.standardizedFileURL
         let target = url(for: filename).standardizedFileURL

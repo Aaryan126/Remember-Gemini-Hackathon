@@ -2,13 +2,20 @@ import SwiftUI
 
 struct AskRememberView: View {
     let viewModel: LibraryViewModel
+    let onClose: () -> Void
     @FocusState private var isComposerFocused: Bool
+    @State private var answerTask: Task<Void, Never>?
+    @State private var showsVoiceInput = false
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 18) {
+                        if case .unavailable(let reason) = viewModel.aiAvailability {
+                            BasicModeBanner(reason: reason)
+                                .padding(.horizontal, 16)
+                        }
                         if viewModel.chatMessages.isEmpty {
                             introduction
                         } else {
@@ -21,7 +28,7 @@ struct AskRememberView: View {
                         if viewModel.isAnswering {
                             HStack(spacing: 10) {
                                 ProgressView()
-                                Text("Gemma is checking your wiki and its sources…")
+                                Text("Checking your saved memories and their sources…")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                 Spacer()
@@ -50,13 +57,19 @@ struct AskRememberView: View {
                     }
                 }
             }
-            .navigationTitle("Ask Remember")
+            .navigationTitle("AI Help")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", systemImage: "xmark") {
+                        close()
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Label("Gemma · On-device", systemImage: "lock.fill")
+                    Label(aiStatusLabel, systemImage: "cloud.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .accessibilityLabel("Gemma runs on this iPhone")
+                        .foregroundStyle(.blue)
+                        .accessibilityLabel("AI uses the configured OpenAI service")
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -68,7 +81,29 @@ struct AskRememberView: View {
             .safeAreaInset(edge: .bottom) {
                 composer
             }
+            .sheet(isPresented: $showsVoiceInput) {
+                AssistantVoiceInputView(viewModel: viewModel)
+            }
+            .safeAreaInset(edge: .top) {
+                if let errorMessage = viewModel.errorMessage {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text(errorMessage).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Dismiss") { viewModel.clearError() }.font(.footnote.weight(.semibold))
+                    }
+                    .padding()
+                    .background(.bar)
+                }
+            }
         }
+        .onDisappear {
+            answerTask?.cancel()
+            viewModel.resetAssistantConversation()
+        }
+    }
+
+    private var aiStatusLabel: String {
+        viewModel.aiAvailability.isAvailable ? "OpenAI · Grounded" : "OpenAI · Offline"
     }
 
     private var introduction: some View {
@@ -79,11 +114,11 @@ struct AskRememberView: View {
                 .accessibilityHidden(true)
             Text("Ask your memories")
                 .font(.title2.bold())
-            Text("Gemma searches your Project Memory first, verifies its answer against the original saved items, and shows the sources it used. Nothing is sent off this iPhone.")
+            Text("AI searches your saved memories, checks quoted evidence against the originals, and shows the sources it used. Relevant excerpts are sent to the configured OpenAI service.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(AskSuggestionBuilder.questions(for: viewModel.wikiPages), id: \.self) { question in
+                ForEach(AskSuggestionBuilder.questions(), id: \.self) { question in
                     suggestion(question)
                 }
             }
@@ -110,6 +145,16 @@ struct AskRememberView: View {
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 10) {
+            Button {
+                isComposerFocused = false
+                showsVoiceInput = true
+            } label: {
+                Image(systemName: "mic.circle.fill")
+                    .font(.system(size: 32))
+            }
+            .disabled(viewModel.isAnswering || viewModel.isTranscribingAssistantQuery)
+            .accessibilityLabel("Speak a question")
+
             TextField("Ask about what you saved", text: Binding(
                 get: { viewModel.chatInput },
                 set: { viewModel.chatInput = $0 }
@@ -124,7 +169,7 @@ struct AskRememberView: View {
 
             Button {
                 isComposerFocused = false
-                Task { await viewModel.askRemember() }
+                answerTask = Task { await viewModel.askRemember() }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 34))
@@ -139,6 +184,13 @@ struct AskRememberView: View {
         .padding(.vertical, 10)
         .background(.bar)
     }
+
+    private func close() {
+        answerTask?.cancel()
+        answerTask = nil
+        viewModel.resetAssistantConversation()
+        onClose()
+    }
 }
 
 nonisolated enum AskSuggestionBuilder {
@@ -148,44 +200,8 @@ nonisolated enum AskSuggestionBuilder {
         "What is still unresolved?",
     ]
 
-    static func questions(for pages: [WikiPage], limit: Int = 3) -> [String] {
-        guard limit > 0 else { return [] }
-
-        var questions: [String] = []
-        func append(_ question: String) {
-            guard questions.count < limit,
-                  !questions.contains(where: { $0.caseInsensitiveCompare(question) == .orderedSame }) else {
-                return
-            }
-            questions.append(question)
-        }
-
-        if let page = pages.first(where: { $0.kind == .project }) {
-            append("Give me the latest on \(quotedSubject(page.title))")
-        }
-        if let page = pages.first(where: { $0.kind == .openQuestion }) {
-            append("What is unresolved about \(quotedSubject(page.title))?")
-        }
-        if let page = pages.first(where: { $0.kind == .decision }) {
-            append("Why did we choose \(quotedSubject(page.title))?")
-        }
-        if let page = pages.first(where: { $0.kind == .constraint }) {
-            append("How does \(quotedSubject(page.title)) affect the project?")
-        }
-
-        for page in pages where questions.count < limit {
-            append("Summarize \(quotedSubject(page.title))")
-        }
-        for fallback in fallbackQuestions where questions.count < limit {
-            append(fallback)
-        }
-        return questions
-    }
-
-    private static func quotedSubject(_ title: String) -> String {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let bounded = trimmed.count > 48 ? String(trimmed.prefix(47)) + "…" : trimmed
-        return "“\(bounded)”"
+    static func questions(limit: Int = 3) -> [String] {
+        Array(fallbackQuestions.prefix(max(0, limit)))
     }
 }
 
@@ -245,14 +261,55 @@ private struct ChatMessageView: View {
                 .frame(maxWidth: 600, alignment: .leading)
             }
 
-            if let modelVersion = message.modelVersion {
-                Label("Answered locally by \(modelVersion)", systemImage: "lock.fill")
+            if !message.citations.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Verified excerpts")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(message.citations) { citation in
+                        if let source = message.sources.first(where: { $0.id == citation.memoryID }) {
+                            NavigationLink {
+                                MemoryDetailView(memoryID: source.id, viewModel: viewModel)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(citation.locator)
+                                        .font(.caption.weight(.semibold))
+                                    Text("“\(citation.excerpt)”")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(4)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(11)
+                                .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens the original saved memory")
+                        }
+                    }
+                }
+                .frame(maxWidth: 600, alignment: .leading)
+            }
+
+            if message.modelVersion != nil {
+                Label(answerStatus, systemImage: message.mode == .grounded ? "checkmark.shield.fill" : "lock.fill")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .accessibilityHint("Model details are available in Settings")
             }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
         .padding(.horizontal, 16)
+    }
+
+    private var answerStatus: String {
+        switch message.mode {
+        case .grounded: "Verified against saved excerpts"
+        case .partial: "Partially verified; unsupported claims were removed"
+        case .sourcesOnly: "Sources only; no answer was trusted"
+        case .noEvidence: "No supporting memory found"
+        case nil: "Answered locally"
+        }
     }
 
     private var renderedText: AttributedString {
@@ -270,6 +327,30 @@ private struct ChatMessageView: View {
         case .pdf: "doc.richtext"
         case .text: "text.quote"
         }
+    }
+
+}
+
+private struct BasicModeBanner: View {
+    let reason: LocalAIUnavailableReason
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("OpenAI unavailable")
+                    .font(.subheadline.weight(.semibold))
+                Text("\(reason.detail) AI Help will return matching sources without inventing an answer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: "sparkles.slash")
+                .foregroundStyle(.orange)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .combine)
     }
 }
 

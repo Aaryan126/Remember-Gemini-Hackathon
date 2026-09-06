@@ -4,15 +4,14 @@ struct PrivacyDashboardView: View {
     let viewModel: LibraryViewModel
 
     var body: some View {
-        NavigationStack {
-            List {
+        List {
                 Section {
                     VStack(spacing: 14) {
                         Image(systemName: "lock.shield.fill")
                             .font(.system(size: 46))
                             .foregroundStyle(.green)
                             .accessibilityHidden(true)
-                        Text("On-device by design")
+                        Text("Local vault, explicit AI boundary")
                             .font(.title2.bold())
                         Text(RememberNetworkPolicy.summary)
                             .font(.subheadline)
@@ -26,19 +25,19 @@ struct PrivacyDashboardView: View {
                 Section("Privacy status") {
                     PrivacyStatusRow(
                         title: "Outbound app features",
-                        value: RememberNetworkPolicy.outboundRequestsImplemented ? "Enabled" : "None",
-                        systemImage: "network.slash",
-                        color: .green
+                        value: RememberNetworkPolicy.outboundRequestsImplemented ? "OpenAI proxy" : "None",
+                        systemImage: "network",
+                        color: .blue
                     )
                     PrivacyStatusRow(
                         title: "AI processing",
-                        value: "Gemma + BGE on this iPhone",
-                        systemImage: "iphone.gen3",
-                        color: .green
+                        value: aiProcessingStatus,
+                        systemImage: "cloud",
+                        color: viewModel.aiAvailability.isAvailable ? .green : .orange
                     )
                     PrivacyStatusRow(
                         title: "Model weights",
-                        value: "Local app storage",
+                        value: "No bundled model weights",
                         systemImage: "internaldrive",
                         color: .green
                     )
@@ -59,25 +58,12 @@ struct PrivacyDashboardView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("App experience") {
-                    Toggle(
-                        "Project Memory",
-                        isOn: Binding(
-                            get: { viewModel.livingWikiEnabled },
-                            set: { viewModel.setLivingWikiEnabled($0) }
-                        )
-                    )
-                    Text("Turn this off to return to the original v1 memories, search, chat, organize, and privacy experience. Project pages and history remain stored locally and can be re-enabled at any time.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
                 Section {
                     if viewModel.activities.isEmpty {
                         ContentUnavailableView(
                             "No AI activity yet",
                             systemImage: "clock.badge.checkmark",
-                            description: Text("Transcription, analysis, Project Memory compilation, local semantic search, and Ask Remember operations will appear here.")
+                            description: Text("Transcription, OpenAI analysis, semantic search, and Ask Remember operations will appear here.")
                         )
                     } else {
                         ForEach(viewModel.activities) { activity in
@@ -85,22 +71,30 @@ struct PrivacyDashboardView: View {
                         }
                     }
                 } header: {
-                    Text("Local AI activity")
+                    Text("AI activity")
                 } footer: {
                     Text("Newest first · stored only in Remember's protected SQLite database")
                 }
-            }
-            .navigationTitle("Privacy")
-            .refreshable {
-                await viewModel.refreshActivities()
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Refresh", systemImage: "arrow.clockwise") {
-                        Task { await viewModel.refreshActivities() }
-                    }
+        }
+        .navigationTitle("Privacy & AI")
+        .refreshable {
+            await viewModel.refreshActivities()
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Refresh", systemImage: "arrow.clockwise") {
+                    Task { await viewModel.refreshActivities() }
                 }
             }
+        }
+    }
+
+    private var aiProcessingStatus: String {
+        switch viewModel.aiAvailability {
+        case .available:
+            "Apple extraction + configured OpenAI service"
+        case .unavailable:
+            "Apple extraction + offline fallback"
         }
     }
 }

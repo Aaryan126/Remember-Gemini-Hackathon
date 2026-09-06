@@ -78,6 +78,23 @@ nonisolated enum WikiCompilationStatus: String, Codable, DatabaseValueConvertibl
     case failed
 }
 
+nonisolated enum WikiPageUpdatePolicy: String, Codable, DatabaseValueConvertible, Sendable {
+    case automatic
+    case protected
+}
+
+nonisolated enum WikiRevisionOrigin: String, Codable, DatabaseValueConvertible, Sendable {
+    case model
+    case user
+    case undo
+}
+
+nonisolated enum PendingWikiChangeStatus: String, Codable, DatabaseValueConvertible, Sendable {
+    case pending
+    case accepted
+    case rejected
+}
+
 nonisolated struct WikiPage: Codable, Equatable, FetchableRecord, Identifiable, PersistableRecord, Sendable {
     static let databaseTableName = "wikiPage"
 
@@ -90,6 +107,7 @@ nonisolated struct WikiPage: Codable, Equatable, FetchableRecord, Identifiable, 
     let createdAt: Date
     var updatedAt: Date
     var revisionNumber: Int
+    var updatePolicy: WikiPageUpdatePolicy = .automatic
 
     var aliases: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(aliasesJSON.utf8))) ?? []
@@ -148,6 +166,28 @@ nonisolated struct WikiRevision: Codable, Equatable, FetchableRecord, Identifiab
     let rationale: String
     let createdAt: Date
     let modelVersion: String
+    var origin: WikiRevisionOrigin = .model
+    var previousPageJSON: String? = nil
+    var newPageJSON: String? = nil
+}
+
+nonisolated struct PendingWikiChange: Codable, Equatable, FetchableRecord, Identifiable, PersistableRecord, Sendable {
+    static let databaseTableName = "pendingWikiChange"
+
+    let id: UUID
+    let memoryID: UUID
+    let runID: UUID?
+    let targetPageID: UUID?
+    let proposalJSON: String
+    let reason: String
+    var status: PendingWikiChangeStatus
+    let createdAt: Date
+    var resolvedAt: Date?
+    let modelVersion: String
+
+    var proposal: WikiPageProposal? {
+        try? JSONDecoder().decode(WikiPageProposal.self, from: Data(proposalJSON.utf8))
+    }
 }
 
 nonisolated struct WikiCompilation: Codable, Equatable, FetchableRecord, PersistableRecord, Sendable {
@@ -213,7 +253,7 @@ nonisolated struct WikiSearchResult: Equatable, Identifiable, Sendable {
     var id: UUID { page.id }
 }
 
-nonisolated struct WikiPageProposal: Equatable, Sendable {
+nonisolated struct WikiPageProposal: Codable, Equatable, Sendable {
     let candidateID: UUID?
     let kind: WikiPageKind
     let title: String
@@ -224,7 +264,7 @@ nonisolated struct WikiPageProposal: Equatable, Sendable {
     let relatedCandidateIDs: [UUID]
 }
 
-nonisolated struct WikiCompilationProposal: Equatable, Sendable {
+nonisolated struct WikiCompilationProposal: Codable, Equatable, Sendable {
     let pages: [WikiPageProposal]
 }
 
@@ -476,13 +516,19 @@ nonisolated enum LivingWikiError: LocalizedError {
     case missingMemory
     case missingPage
     case sourceChanged
+    case invalidEdit
+    case nothingToUndo
+    case changeAlreadyResolved
 
     var errorDescription: String? {
         switch self {
-        case .invalidModelResponse: "Gemma returned a wiki update that Remember could not safely validate."
+        case .invalidModelResponse: "The on-device model returned a wiki update that Remember could not safely validate."
         case .missingMemory: "The source memory no longer exists."
         case .missingPage: "A referenced wiki page no longer exists."
         case .sourceChanged: "The source memory changed during compilation and is ready to compile again."
+        case .invalidEdit: "The page needs a title and summary before it can be saved."
+        case .nothingToUndo: "There is no earlier editable version to restore."
+        case .changeAlreadyResolved: "That suggested change has already been reviewed."
         }
     }
 }

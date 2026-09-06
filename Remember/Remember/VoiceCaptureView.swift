@@ -62,7 +62,7 @@ struct VoiceCaptureView: View {
 
                 Spacer()
 
-                Label("Audio and its transcript stay on this iPhone", systemImage: "lock.fill")
+                Label("Audio stays local; its transcript may be analyzed by OpenAI", systemImage: "lock.fill")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.green)
             }
@@ -97,13 +97,13 @@ struct VoiceCaptureView: View {
     private var statusMessage: String {
         switch recorder.state {
         case .idle:
-            "Speak naturally. Remember will transcribe locally, then Gemma will summarize and tag it."
+            "Speak naturally. Remember transcribes locally, then uses the configured OpenAI service to summarize and tag it."
         case .requestingPermission:
             "You may be asked for microphone and speech-recognition access."
         case .recording:
             "Tap stop when you’re finished."
         case .recorded:
-            "Save it to start on-device transcription and Gemma analysis."
+            "Save it to start local transcription and OpenAI analysis."
         case .failed:
             "Check the message below, then try again."
         }

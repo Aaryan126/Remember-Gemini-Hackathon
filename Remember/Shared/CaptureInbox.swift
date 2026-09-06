@@ -56,12 +56,28 @@ nonisolated struct CaptureInbox: Sendable {
     }
 
     static func appGroup(fileManager: FileManager = .default) throws -> CaptureInbox {
-        guard let containerURL = fileManager.containerURL(
+        if let containerURL = fileManager.containerURL(
             forSecurityApplicationGroupIdentifier: RememberAppGroup.identifier
-        ) else {
-            throw CaptureInboxError.appGroupUnavailable(RememberAppGroup.identifier)
+        ) {
+            return CaptureInbox(containerURL: containerURL)
         }
-        return CaptureInbox(containerURL: containerURL)
+
+        #if targetEnvironment(simulator)
+        // Command-line simulator builds may be installed without signed App Group
+        // entitlements. Keep in-app capture usable instead of failing at launch.
+        let applicationSupportURL = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let fallbackURL = applicationSupportURL
+            .appendingPathComponent("Remember", isDirectory: true)
+            .appendingPathComponent("SimulatorCaptureContainer", isDirectory: true)
+        return CaptureInbox(containerURL: fallbackURL)
+        #else
+        throw CaptureInboxError.appGroupUnavailable(RememberAppGroup.identifier)
+        #endif
     }
 
     @discardableResult

@@ -4,43 +4,42 @@ import Observation
 @MainActor
 @Observable
 final class LibraryViewModel {
-    private static let livingWikiDefaultsKey = "remember.livingWiki.enabled"
-
     private(set) var items: [MemoryLibraryItem] = []
     private(set) var isSynchronizing = false
     private(set) var isSearching = false
-    private(set) var isGemmaSearching = false
+    private(set) var isAISearching = false
     private(set) var isAnswering = false
-    private(set) var usedGemmaForCurrentSearch = false
+    private(set) var usedAIForCurrentSearch = false
     private(set) var errorMessage: String?
-    private(set) var livingWikiEnabled: Bool
-    private(set) var isCompilingWiki = false
+    private(set) var isTranscribingAssistantQuery = false
 
     var searchQuery = ""
     var selectedKind: MemoryKind?
     var selectedDateRange: MemoryDateRange = .anytime
     var selectedTag: String?
     var chatInput = ""
-    var wikiSearchQuery = ""
 
     private(set) var searchResults: [MemoryLibraryItem] = []
     private(set) var chatMessages: [RememberChatMessage] = []
     private(set) var activities: [LocalAIActivity] = []
     private(set) var collections: [MemoryCollectionSummary] = []
     private(set) var tagSummaries: [MemoryTagSummary] = []
-    private(set) var wikiPages: [WikiPage] = []
-    private(set) var wikiQueueSummary = WikiQueueSummary(pending: 0, processing: 0, failed: 0)
+    private(set) var aiAvailability: LocalAIAvailability = OpenAIAvailability().availability()
+    private(set) var aiModelDescriptor = OpenAIAvailability().descriptor
 
     private var pipeline: MemoryPipeline?
-    private let userDefaults: UserDefaults
+    private var assistantConversationID = UUID()
+    private let captureServiceFactory: @Sendable () throws -> any InAppCaptureServing
+    private let speechTranscriber: any LocalSpeechTranscribing
 
-    init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
-        if let storedValue = userDefaults.object(forKey: Self.livingWikiDefaultsKey) as? Bool {
-            livingWikiEnabled = storedValue
-        } else {
-            livingWikiEnabled = true
-        }
+    init(
+        captureServiceFactory: @escaping @Sendable () throws -> any InAppCaptureServing = {
+            InAppCaptureService(inbox: try CaptureInbox.appGroup())
+        },
+        speechTranscriber: any LocalSpeechTranscribing = OnDeviceSpeechTranscriber()
+    ) {
+        self.captureServiceFactory = captureServiceFactory
+        self.speechTranscriber = speechTranscriber
     }
 
     func synchronize() async {
@@ -54,6 +53,7 @@ final class LibraryViewModel {
 
         do {
             let pipeline = try livePipeline()
+            refreshAIStatus(using: pipeline)
             try await pipeline.bootstrap()
             try await reload(using: pipeline)
             try await reloadActivities(using: pipeline)
@@ -67,15 +67,6 @@ final class LibraryViewModel {
                 try await reloadOrganization(using: pipeline)
             }
 
-            if livingWikiEnabled {
-                try await pipeline.prepareWikiCompilationQueue()
-                try await reloadWiki(using: pipeline)
-                if wikiQueueSummary.pending > 0 {
-                    isCompilingWiki = true
-                    defer { isCompilingWiki = false }
-                    try await compileWikiQueue(using: pipeline)
-                }
-            }
         } catch is CancellationError {
             // The pipeline returns an in-flight record to Captured before propagating cancellation.
         } catch {
@@ -124,8 +115,8 @@ final class LibraryViewModel {
         }
 
         isSearching = true
-        isGemmaSearching = false
-        usedGemmaForCurrentSearch = false
+        isAISearching = false
+        usedAIForCurrentSearch = false
         do {
             let results = try await livePipeline().search(request)
             try Task.checkCancellation()
@@ -146,7 +137,7 @@ final class LibraryViewModel {
         }
     }
 
-    func searchWithGemma() async {
+    func searchWithAI() async {
         let request = searchRequest
         guard !request.normalizedQuery.isEmpty else {
             await search()
@@ -154,7 +145,7 @@ final class LibraryViewModel {
         }
 
         isSearching = true
-        isGemmaSearching = true
+        isAISearching = true
         errorMessage = nil
         do {
             let results = try await livePipeline().semanticSearch(request)
@@ -163,20 +154,20 @@ final class LibraryViewModel {
                 return
             }
             searchResults = results
-            usedGemmaForCurrentSearch = true
+            usedAIForCurrentSearch = true
             isSearching = false
-            isGemmaSearching = false
+            isAISearching = false
             try await reloadActivities(using: livePipeline())
         } catch is CancellationError {
             if request == searchRequest {
                 isSearching = false
-                isGemmaSearching = false
+                isAISearching = false
             }
         } catch {
             if request == searchRequest {
                 isSearching = false
-                isGemmaSearching = false
-                usedGemmaForCurrentSearch = false
+                isAISearching = false
+                usedAIForCurrentSearch = false
                 errorMessage = Self.message(for: error)
             }
         }
@@ -188,6 +179,7 @@ final class LibraryViewModel {
             return
         }
 
+        let conversationID = assistantConversationID
         let history = chatMessages.map {
             RememberConversationTurn(role: $0.role, text: $0.text)
         }
@@ -201,18 +193,25 @@ final class LibraryViewModel {
         do {
             let pipeline = try livePipeline()
             let response = try await pipeline.answer(question: question, history: history)
+            try Task.checkCancellation()
+            guard assistantConversationID == conversationID else { return }
             chatMessages.append(
                 RememberChatMessage(
                     role: .assistant,
                     text: response.answer,
                     sources: response.sources,
-                    modelVersion: response.modelVersion
+                    modelVersion: response.modelVersion,
+                    citations: response.citations,
+                    mode: response.mode
                 )
             )
             try await reloadActivities(using: pipeline)
         } catch is CancellationError {
-            chatInput = question
+            if assistantConversationID == conversationID {
+                chatInput = question
+            }
         } catch {
+            guard assistantConversationID == conversationID else { return }
             chatMessages.append(
                 RememberChatMessage(
                     role: .assistant,
@@ -223,7 +222,42 @@ final class LibraryViewModel {
             )
             errorMessage = Self.message(for: error)
         }
+        if assistantConversationID == conversationID {
+            isAnswering = false
+        }
+    }
+
+    func resetAssistantConversation() {
+        assistantConversationID = UUID()
+        chatInput = ""
+        chatMessages = []
         isAnswering = false
+        isTranscribingAssistantQuery = false
+    }
+
+    func transcribeAssistantQuestion(from recordingURL: URL) async -> Bool {
+        guard !isTranscribingAssistantQuery else { return false }
+        let conversationID = assistantConversationID
+        isTranscribingAssistantQuery = true
+        errorMessage = nil
+        defer {
+            if assistantConversationID == conversationID {
+                isTranscribingAssistantQuery = false
+            }
+        }
+        do {
+            let transcript = try await speechTranscriber.transcribe(audioURL: recordingURL)
+            try Task.checkCancellation()
+            guard assistantConversationID == conversationID else { return false }
+            chatInput = transcript
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard assistantConversationID == conversationID else { return false }
+            errorMessage = Self.message(for: error)
+            return false
+        }
     }
 
     func refreshActivities() async {
@@ -234,108 +268,6 @@ final class LibraryViewModel {
         }
     }
 
-    var filteredWikiPages: [WikiPage] {
-        let query = wikiSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return wikiPages }
-        return wikiPages.filter { LivingWikiCandidateIndex.matches(query: query, page: $0) }
-    }
-
-    func setLivingWikiEnabled(_ enabled: Bool) {
-        guard livingWikiEnabled != enabled else { return }
-        livingWikiEnabled = enabled
-        userDefaults.set(enabled, forKey: Self.livingWikiDefaultsKey)
-        if enabled {
-            Task { await synchronize() }
-        }
-    }
-
-    func compileNextWikiMemory(retryFailures: Bool = false) async {
-        guard livingWikiEnabled, !isCompilingWiki else { return }
-        isCompilingWiki = true
-        errorMessage = nil
-        defer { isCompilingWiki = false }
-
-        do {
-            let pipeline = try livePipeline()
-            try await pipeline.prepareWikiCompilationQueue()
-            if retryFailures {
-                try await pipeline.retryFailedWikiCompilations()
-            }
-            try await compileWikiQueue(using: pipeline)
-        } catch is CancellationError {
-            // The pipeline returns an interrupted compilation to the local queue.
-        } catch {
-            errorMessage = Self.message(for: error)
-        }
-    }
-
-    func wikiPageSnapshot(id: UUID) async -> WikiPageSnapshot? {
-        do {
-            return try await livePipeline().wikiPageSnapshot(id: id)
-        } catch {
-            errorMessage = Self.message(for: error)
-            return nil
-        }
-    }
-
-    func projectMemoryHistory() async -> [ProjectMemoryRunSnapshot] {
-        do {
-            return try await livePipeline().projectMemoryHistory()
-        } catch {
-            errorMessage = Self.message(for: error)
-            return []
-        }
-    }
-
-    func projectMemoryPageSnapshots() async -> [WikiPageSnapshot] {
-        do {
-            return try await livePipeline().projectMemoryPageSnapshots()
-        } catch {
-            errorMessage = Self.message(for: error)
-            return []
-        }
-    }
-
-    func runProjectMemoryCheck() async {
-        do {
-            try await livePipeline().runProjectMemoryLint()
-        } catch {
-            errorMessage = Self.message(for: error)
-        }
-    }
-
-    func projectMemoryExportDocument() async -> ProjectMemoryExportDocument? {
-        do {
-            return try await livePipeline().projectMemoryExportDocument()
-        } catch {
-            errorMessage = Self.message(for: error)
-            return nil
-        }
-    }
-
-    func reportProjectMemoryExportFailure(_ error: Error) {
-        let cocoaError = error as NSError
-        guard cocoaError.domain != NSCocoaErrorDomain || cocoaError.code != NSUserCancelledError else {
-            return
-        }
-        errorMessage = "Remember could not export the Project Memory Markdown file. Please choose another location and try again."
-    }
-
-    private func compileWikiQueue(using pipeline: MemoryPipeline) async throws {
-        var processedAtLeastOneMemory = false
-        while let memory = try await pipeline.claimNextWikiCompilation() {
-            try Task.checkCancellation()
-            try await pipeline.processWiki(memory)
-            processedAtLeastOneMemory = true
-            try await reloadWiki(using: pipeline)
-            try await reloadActivities(using: pipeline)
-            await Task.yield()
-        }
-        if processedAtLeastOneMemory {
-            try await pipeline.runProjectMemoryLint()
-        }
-    }
-
     func clearSearch() {
         searchQuery = ""
         selectedKind = nil
@@ -343,8 +275,8 @@ final class LibraryViewModel {
         selectedTag = nil
         searchResults = []
         isSearching = false
-        isGemmaSearching = false
-        usedGemmaForCurrentSearch = false
+        isAISearching = false
+        usedAIForCurrentSearch = false
     }
 
     func update(id: UUID, title: String, summary: String, tagsText: String) async -> Bool {
@@ -355,6 +287,12 @@ final class LibraryViewModel {
 
         return await performMutation { pipeline in
             try await pipeline.update(id: id, title: title, summary: summary, tags: tags)
+        }
+    }
+
+    func updateNote(id: UUID, title: String, body: String) async -> Bool {
+        await performMutation { pipeline in
+            try await pipeline.updateNote(id: id, title: title, body: body)
         }
     }
 
@@ -372,6 +310,22 @@ final class LibraryViewModel {
             Task { await self.synchronize() }
         }
         return saved
+    }
+
+    func saveNote(_ text: String) async -> Bool {
+        await saveCapture { try $0.saveNote(text) }
+    }
+
+    func saveLink(_ urlText: String, context: String?) async -> Bool {
+        await saveCapture { try $0.saveLink(urlText, context: context) }
+    }
+
+    func saveImage(from sourceURL: URL, context: String?) async -> Bool {
+        await saveCapture { try $0.saveImage(from: sourceURL, context: context) }
+    }
+
+    func saveImportedFile(from sourceURL: URL) async -> Bool {
+        await saveCapture { try $0.saveImportedFile(from: sourceURL) }
     }
 
     func createCollection(name: String) async -> Bool {
@@ -440,6 +394,10 @@ final class LibraryViewModel {
         errorMessage = nil
     }
 
+    func reportError(_ error: Error) {
+        errorMessage = Self.message(for: error)
+    }
+
     @discardableResult
     private func performMutation(
         _ mutation: (MemoryPipeline) async throws -> Void
@@ -450,6 +408,21 @@ final class LibraryViewModel {
             try await mutation(pipeline)
             try await reload(using: pipeline)
             try await reloadOrganization(using: pipeline)
+            return true
+        } catch {
+            errorMessage = Self.message(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    private func saveCapture(
+        _ capture: (any InAppCaptureServing) throws -> Void
+    ) async -> Bool {
+        errorMessage = nil
+        do {
+            try capture(captureServiceFactory())
+            Task { await self.synchronize() }
             return true
         } catch {
             errorMessage = Self.message(for: error)
@@ -475,10 +448,6 @@ final class LibraryViewModel {
         tagSummaries = try await pipeline.tagSummaries()
     }
 
-    private func reloadWiki(using pipeline: MemoryPipeline) async throws {
-        wikiPages = try await pipeline.wikiPages()
-        wikiQueueSummary = try await pipeline.wikiQueueSummary()
-    }
 
     private func livePipeline() throws -> MemoryPipeline {
         if let pipeline {
@@ -486,7 +455,13 @@ final class LibraryViewModel {
         }
         let newPipeline = try MemoryPipeline.live()
         pipeline = newPipeline
+        refreshAIStatus(using: newPipeline)
         return newPipeline
+    }
+
+    private func refreshAIStatus(using pipeline: MemoryPipeline) {
+        aiAvailability = pipeline.aiAvailability()
+        aiModelDescriptor = pipeline.aiModelDescriptor()
     }
 
     nonisolated private static func message(for error: Error) -> String {
@@ -504,18 +479,24 @@ nonisolated struct RememberChatMessage: Equatable, Identifiable, Sendable {
     let text: String
     let sources: [MemoryLibraryItem]
     let modelVersion: String?
+    let citations: [GroundedCitation]
+    let mode: RememberAnswerMode?
 
     init(
         id: UUID = UUID(),
         role: RememberConversationRole,
         text: String,
         sources: [MemoryLibraryItem],
-        modelVersion: String?
+        modelVersion: String?,
+        citations: [GroundedCitation] = [],
+        mode: RememberAnswerMode? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.sources = sources
         self.modelVersion = modelVersion
+        self.citations = citations
+        self.mode = mode
     }
 }

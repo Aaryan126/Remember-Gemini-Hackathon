@@ -1,37 +1,36 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system
     @State private var viewModel = LibraryViewModel()
+    @State private var showsAssistant = false
 
     var body: some View {
         TabView {
-            MemoryLibraryView(viewModel: viewModel)
+            MemoryLibraryView(viewModel: viewModel, onAsk: openAssistant)
                 .tabItem {
                     Label("Memories", systemImage: "square.grid.2x2")
                 }
 
-            if viewModel.livingWikiEnabled {
-                LivingWikiView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Project", systemImage: "books.vertical.fill")
-                    }
+            ProjectView(onAsk: openAssistant)
+                .tabItem {
+                    Label("Project", systemImage: "point.3.connected.trianglepath.dotted")
+                }
+
+            SettingsView(viewModel: viewModel, onAsk: openAssistant)
+                .tabItem {
+                    Label("Settings", systemImage: "gearshape")
+                }
+        }
+        .preferredColorScheme(appearance.colorScheme)
+        .fullScreenCover(isPresented: $showsAssistant) {
+            AskRememberView(viewModel: viewModel) {
+                showsAssistant = false
             }
-
-            AskRememberView(viewModel: viewModel)
-                .tabItem {
-                    Label("Ask", systemImage: "bubble.left.and.bubble.right")
-                }
-
-            OrganizeView(viewModel: viewModel)
-                .tabItem {
-                    Label("Organize", systemImage: "folder")
-                }
-
-            PrivacyDashboardView(viewModel: viewModel)
-                .tabItem {
-                    Label("Privacy", systemImage: "lock.shield")
-                }
         }
         .task {
             await viewModel.synchronize()
@@ -43,17 +42,24 @@ struct ContentView: View {
             Task { await viewModel.synchronize() }
         }
     }
+
+    private func openAssistant() {
+        showsAssistant = true
+    }
 }
 
-private struct MemoryLibraryView: View {
+struct MemoryLibraryView: View {
     let viewModel: LibraryViewModel
+    let onAsk: () -> Void
     @State private var showsVoiceCapture = false
+    @State private var showsNoteCapture = false
+    @State private var showsLinkCapture = false
+    @State private var showsCamera = false
+    @State private var showsPhotoPicker = false
+    @State private var showsFileImporter = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var pendingImage: PendingImage?
     @State private var isSearchPresented = false
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-    ]
 
     var body: some View {
         NavigationStack {
@@ -64,7 +70,8 @@ private struct MemoryLibraryView: View {
                     library
                 }
             }
-            .navigationTitle("Remember")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: Binding(
                     get: { viewModel.searchQuery },
@@ -75,28 +82,55 @@ private struct MemoryLibraryView: View {
                 prompt: "Search your memories"
             )
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Label("On-device", systemImage: "lock.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .accessibilityLabel("Private, on-device processing")
-                    Button("Record Voice Memory", systemImage: "mic.circle.fill") {
-                        showsVoiceCapture = true
-                    }
-                    Menu("Remember experience", systemImage: "ellipsis.circle") {
-                        Toggle(
-                            "Project Memory",
-                            isOn: Binding(
-                                get: { viewModel.livingWikiEnabled },
-                                set: { viewModel.setLivingWikiEnabled($0) }
-                            )
-                        )
-                        Text("Turn this off to return to the v1 experience. Project pages and history are preserved.")
-                    }
-                }
+                TopLevelToolbar(title: "Remember", onAsk: onAsk)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                CaptureMenuButton(onSelect: selectCaptureAction)
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 12)
             }
             .sheet(isPresented: $showsVoiceCapture) {
                 VoiceCaptureView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showsNoteCapture) {
+                NewNoteCaptureView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showsLinkCapture) {
+                LinkCaptureView(viewModel: viewModel)
+            }
+            .sheet(item: $pendingImage) { pending in
+                ImageCaptureConfirmationView(imageURL: pending.url, viewModel: viewModel)
+            }
+            .fullScreenCover(isPresented: $showsCamera) {
+                CameraPicker { image in
+                    do {
+                        let url = try image.rememberTemporaryJPEGURL()
+                        showsCamera = false
+                        pendingImage = PendingImage(url: url)
+                    } catch {
+                        showsCamera = false
+                        viewModel.reportError(error)
+                    }
+                } onCancel: {
+                    showsCamera = false
+                }
+                .ignoresSafeArea()
+            }
+            .photosPicker(
+                isPresented: $showsPhotoPicker,
+                selection: $selectedPhoto,
+                matching: .images
+            )
+            .fileImporter(
+                isPresented: $showsFileImporter,
+                allowedContentTypes: [.image, .pdf, .plainText],
+                allowsMultipleSelection: false
+            ) { result in
+                guard case .success(let urls) = result, let url = urls.first else {
+                    if case .failure(let error) = result { viewModel.reportError(error) }
+                    return
+                }
+                Task { _ = await viewModel.saveImportedFile(from: url) }
             }
             .overlay {
                 if viewModel.items.isEmpty, viewModel.isSynchronizing {
@@ -121,7 +155,18 @@ private struct MemoryLibraryView: View {
                 await viewModel.search()
             }
             .onSubmit(of: .search) {
-                Task { await viewModel.searchWithGemma() }
+                Task { await viewModel.searchWithAI() }
+            }
+            .onChange(of: selectedPhoto) { _, item in
+                guard let item else { return }
+                Task {
+                    defer { selectedPhoto = nil }
+                    do {
+                        pendingImage = PendingImage(url: try await item.temporaryImageURL())
+                    } catch {
+                        viewModel.reportError(error)
+                    }
+                }
             }
         }
     }
@@ -134,7 +179,7 @@ private struct MemoryLibraryView: View {
                 if viewModel.isSynchronizing {
                     HStack(spacing: 10) {
                         ProgressView()
-                        Text("Importing and analyzing on this iPhone")
+                        Text("Importing and analyzing your memory")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -148,7 +193,7 @@ private struct MemoryLibraryView: View {
                 if viewModel.visibleItems.isEmpty, viewModel.searchRequest.isActive, !viewModel.isSearching {
                     noSearchResults
                 } else {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                    MasonryLayout(spacing: 12) {
                         ForEach(viewModel.visibleItems) { item in
                             NavigationLink {
                                 MemoryDetailView(memoryID: item.id, viewModel: viewModel)
@@ -174,17 +219,17 @@ private struct MemoryLibraryView: View {
             if viewModel.isSearching {
                 ProgressView()
                     .controlSize(.small)
-                Text(viewModel.isGemmaSearching ? "Gemma is understanding your query…" : "Searching on this iPhone…")
+                Text(viewModel.isAISearching ? "Understanding your query…" : "Searching your memories…")
             } else {
                 Text("\(viewModel.visibleItems.count) \(viewModel.visibleItems.count == 1 ? "result" : "results")")
             }
             Spacer()
-            if viewModel.usedGemmaForCurrentSearch {
-                Label("Gemma", systemImage: "sparkles")
+            if viewModel.usedAIForCurrentSearch {
+                Label("AI-assisted", systemImage: "sparkles")
                     .foregroundStyle(.blue)
             } else if !viewModel.searchRequest.normalizedQuery.isEmpty {
-                Button("Search with Gemma", systemImage: "sparkles") {
-                    Task { await viewModel.searchWithGemma() }
+                Button("Try AI search", systemImage: "sparkles") {
+                    Task { await viewModel.searchWithAI() }
                 }
                 .disabled(viewModel.isSearching)
             } else {
@@ -215,10 +260,10 @@ private struct MemoryLibraryView: View {
         ContentUnavailableView {
             Label("Save your first memory", systemImage: "sparkles.rectangle.stack")
         } description: {
-            Text("From any app, tap Share and choose Remember to save a screenshot, photo, link, PDF, or text. You can also record a voice memory here. Everything stays on this iPhone.")
+            Text("Add a note, photo, file, link, or voice recording here—or share something to Remember from another app. Originals are stored in your local vault; analysis uses the configured OpenAI service.")
         } actions: {
-            Button("Record Voice Memory", systemImage: "mic.fill") {
-                showsVoiceCapture = true
+            Button("Write a Note", systemImage: "square.and.pencil") {
+                showsNoteCapture = true
             }
             .buttonStyle(.borderedProminent)
         }
@@ -236,6 +281,90 @@ private struct MemoryLibraryView: View {
         }
         .padding()
         .background(.bar)
+    }
+
+    private func selectCaptureAction(_ action: CaptureAction) {
+        switch action {
+        case .note:
+            showsNoteCapture = true
+        case .camera:
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                viewModel.reportError(CaptureUIError.cameraUnavailable)
+                return
+            }
+            showsCamera = true
+        case .photo:
+            showsPhotoPicker = true
+        case .file:
+            showsFileImporter = true
+        case .link:
+            showsLinkCapture = true
+        case .voice:
+            showsVoiceCapture = true
+        }
+    }
+}
+
+nonisolated enum AppAppearance: String, CaseIterable, Identifiable {
+    static let storageKey = "remember.appearance"
+
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+}
+
+struct TopLevelToolbar: ToolbarContent {
+    let title: String
+    let onAsk: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Text(title)
+                .font(.largeTitle.bold())
+                .fixedSize()
+                .accessibilityAddTraits(.isHeader)
+        }
+        .sharedBackgroundVisibility(.hidden)
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(action: onAsk) {
+                Image(systemName: "bubble.left.and.text.bubble.right.fill")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("AI Help")
+            .accessibilityHint("Ask a temporary question about your memories")
+        }
+        .sharedBackgroundVisibility(.hidden)
+    }
+}
+
+private struct PendingImage: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private enum CaptureUIError: LocalizedError {
+    case cameraUnavailable
+
+    var errorDescription: String? {
+        "A camera is not available on this device. Choose a photo instead."
     }
 }
 
@@ -381,63 +510,116 @@ private struct MemoryCard: View {
     let item: MemoryLibraryItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            preview
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .clipped()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(item.memory.displayTitle)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-
-                if let summary = item.memory.displaySummary {
-                    Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
-
-                ProcessingStateLabel(state: item.memory.state)
+        Group {
+            if item.memory.kind == .image {
+                imageCard
+            } else {
+                compactCard
             }
-            .padding(12)
         }
         .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.primary.opacity(0.06))
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens memory details")
     }
 
-    @ViewBuilder
-    private var preview: some View {
-        switch item.memory.kind {
-        case .audio:
-            placeholderPreview(systemImage: "waveform", color: .orange)
-        case .image:
-            LocalImageView(url: item.originalURL, maximumPixelSize: 600)
-        case .link:
-            placeholderPreview(systemImage: "link", color: .blue)
-        case .pdf:
-            placeholderPreview(systemImage: "doc.richtext", color: .red)
-        case .text:
-            placeholderPreview(systemImage: "text.quote", color: .accentColor)
+    private var imageCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            LocalImageView(url: item.originalURL, maximumPixelSize: 900, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 96)
+                .background(Color(uiColor: .tertiarySystemBackground))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.memory.displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                processingState
+            }
+            .padding(12)
         }
     }
 
-    private func placeholderPreview(systemImage: String, color: Color) -> some View {
-            ZStack(alignment: .topLeading) {
-                color.opacity(0.12)
-                Image(systemName: systemImage)
-                    .font(.largeTitle)
-                    .foregroundStyle(color)
-                    .padding(20)
+    private var compactCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.memory.displayTitle)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let summary = distinctSummary {
+                Text(summary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(6)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            processingState
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+    }
+
+    private var distinctSummary: String? {
+        guard let summary = item.memory.displaySummary,
+              summary.caseInsensitiveCompare(item.memory.displayTitle) != .orderedSame else {
+            return nil
+        }
+        return summary
+    }
+
+    @ViewBuilder
+    private var processingState: some View {
+        if item.memory.state != .indexed {
+            Text(item.memory.state.label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(item.memory.state == .failed ? Color.orange : Color.secondary)
+        }
+    }
+}
+
+private struct MasonryLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        let width = proposal.width ?? 0
+        let columnWidth = max(0, (width - spacing) / 2)
+        var heights = [CGFloat.zero, CGFloat.zero]
+
+        for subview in subviews {
+            let column = heights[0] <= heights[1] ? 0 : 1
+            let size = subview.sizeThatFits(.init(width: columnWidth, height: nil))
+            heights[column] += size.height + spacing
+        }
+
+        let contentHeight = (heights.max() ?? 0) - (subviews.isEmpty ? 0 : spacing)
+        return CGSize(width: width, height: max(contentHeight, 0))
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let columnWidth = max(0, (bounds.width - spacing) / 2)
+        var heights = [CGFloat.zero, CGFloat.zero]
+
+        for subview in subviews {
+            let column = heights[0] <= heights[1] ? 0 : 1
+            let itemProposal = ProposedViewSize(width: columnWidth, height: nil)
+            let size = subview.sizeThatFits(itemProposal)
+            let x = bounds.minX + CGFloat(column) * (columnWidth + spacing)
+            let y = bounds.minY + heights[column]
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: itemProposal)
+            heights[column] += size.height + spacing
+        }
     }
 }
 

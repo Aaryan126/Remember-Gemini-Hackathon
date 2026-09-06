@@ -236,7 +236,7 @@ nonisolated enum ProjectMemoryPatchEvaluator {
                 checks: checks,
                 proposalToApply: WikiCompilationProposal(pages: pages),
                 status: .discarded,
-                rationale: "Gemma found no durable project knowledge to add from this memory."
+                rationale: "The on-device model found no durable project knowledge to add from this memory."
             )
         }
         return ProjectMemoryPatchDecision(
