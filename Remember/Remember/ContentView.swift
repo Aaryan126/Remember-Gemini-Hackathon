@@ -53,13 +53,13 @@ struct MemoryLibraryView: View {
     let onAsk: () -> Void
     @State private var showsVoiceCapture = false
     @State private var showsNoteCapture = false
-    @State private var showsLinkCapture = false
     @State private var showsCamera = false
     @State private var showsPhotoPicker = false
     @State private var showsFileImporter = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var pendingImage: PendingImage?
     @State private var isSearchPresented = false
+    @State private var isCaptureMenuExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -84,19 +84,11 @@ struct MemoryLibraryView: View {
             .toolbar {
                 TopLevelToolbar(title: "Remember", onAsk: onAsk)
             }
-            .overlay(alignment: .bottomTrailing) {
-                CaptureMenuButton(onSelect: selectCaptureAction)
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 12)
-            }
             .sheet(isPresented: $showsVoiceCapture) {
                 VoiceCaptureView(viewModel: viewModel)
             }
             .sheet(isPresented: $showsNoteCapture) {
                 NewNoteCaptureView(viewModel: viewModel)
-            }
-            .sheet(isPresented: $showsLinkCapture) {
-                LinkCaptureView(viewModel: viewModel)
             }
             .sheet(item: $pendingImage) { pending in
                 ImageCaptureConfirmationView(imageURL: pending.url, viewModel: viewModel)
@@ -169,13 +161,36 @@ struct MemoryLibraryView: View {
                 }
             }
         }
+        .overlay {
+            if isCaptureMenuExpanded {
+                ZStack {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .opacity(0.38)
+                    Color.black.opacity(0.10)
+                }
+                .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            isCaptureMenuExpanded = false
+                        }
+                    }
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            CaptureMenuButton(
+                isExpanded: $isCaptureMenuExpanded,
+                onSelect: selectCaptureAction
+            )
+        }
     }
 
     private var library: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                SearchFiltersView(viewModel: viewModel)
-
                 if viewModel.isSynchronizing {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -193,7 +208,7 @@ struct MemoryLibraryView: View {
                 if viewModel.visibleItems.isEmpty, viewModel.searchRequest.isActive, !viewModel.isSearching {
                     noSearchResults
                 } else {
-                    MasonryLayout(spacing: 12) {
+                    MasonryLayout(spacing: 18) {
                         ForEach(viewModel.visibleItems) { item in
                             NavigationLink {
                                 MemoryDetailView(memoryID: item.id, viewModel: viewModel)
@@ -203,6 +218,7 @@ struct MemoryLibraryView: View {
                             .buttonStyle(.plain)
                         }
                     }
+                    .padding(.top, 10)
                 }
             }
             .padding(.horizontal, 16)
@@ -260,7 +276,7 @@ struct MemoryLibraryView: View {
         ContentUnavailableView {
             Label("Save your first memory", systemImage: "sparkles.rectangle.stack")
         } description: {
-            Text("Add a note, photo, file, link, or voice recording here—or share something to Remember from another app. Originals are stored in your local vault; analysis uses the configured OpenAI service.")
+            Text("Add a note, photo, file, or voice recording here—or share something to Remember from another app. Originals are stored in your local vault; analysis uses the configured OpenAI service.")
         } actions: {
             Button("Write a Note", systemImage: "square.and.pencil") {
                 showsNoteCapture = true
@@ -297,8 +313,6 @@ struct MemoryLibraryView: View {
             showsPhotoPicker = true
         case .file:
             showsFileImporter = true
-        case .link:
-            showsLinkCapture = true
         case .voice:
             showsVoiceCapture = true
         }
@@ -345,13 +359,25 @@ struct TopLevelToolbar: ToolbarContent {
         .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .topBarTrailing) {
             Button(action: onAsk) {
-                Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                RememberAssistantMark()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("AI Help")
             .accessibilityHint("Ask a temporary question about your memories")
         }
         .sharedBackgroundVisibility(.hidden)
+    }
+}
+
+struct RememberAssistantMark: View {
+    var size = CGFloat(30)
+
+    var body: some View {
+        Image(systemName: "apple.intelligence")
+            .font(.system(size: size * 0.82, weight: .medium))
+            .symbolRenderingMode(.hierarchical)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
@@ -365,144 +391,6 @@ private enum CaptureUIError: LocalizedError {
 
     var errorDescription: String? {
         "A camera is not available on this device. Choose a photo instead."
-    }
-}
-
-private struct SearchFiltersView: View {
-    let viewModel: LibraryViewModel
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Menu {
-                    filterButton("All types", selected: viewModel.selectedKind == nil) {
-                        viewModel.selectedKind = nil
-                    }
-                    filterButton("Voice", selected: viewModel.selectedKind == .audio) {
-                        viewModel.selectedKind = .audio
-                    }
-                    filterButton("Images", selected: viewModel.selectedKind == .image) {
-                        viewModel.selectedKind = .image
-                    }
-                    filterButton("Links", selected: viewModel.selectedKind == .link) {
-                        viewModel.selectedKind = .link
-                    }
-                    filterButton("PDFs", selected: viewModel.selectedKind == .pdf) {
-                        viewModel.selectedKind = .pdf
-                    }
-                    filterButton("Text", selected: viewModel.selectedKind == .text) {
-                        viewModel.selectedKind = .text
-                    }
-                } label: {
-                    FilterPill(
-                        title: viewModel.selectedKind?.filterLabel ?? "All types",
-                        systemImage: viewModel.selectedKind?.filterSymbol ?? "square.grid.2x2",
-                        isSelected: viewModel.selectedKind != nil
-                    )
-                }
-
-                Menu {
-                    ForEach(MemoryDateRange.allCases) { dateRange in
-                        filterButton(dateRange.label, selected: viewModel.selectedDateRange == dateRange) {
-                            viewModel.selectedDateRange = dateRange
-                        }
-                    }
-                } label: {
-                    FilterPill(
-                        title: viewModel.selectedDateRange.label,
-                        systemImage: "calendar",
-                        isSelected: viewModel.selectedDateRange != .anytime
-                    )
-                }
-
-                if !viewModel.availableTags.isEmpty {
-                    Menu {
-                        filterButton("All tags", selected: viewModel.selectedTag == nil) {
-                            viewModel.selectedTag = nil
-                        }
-                        ForEach(viewModel.availableTags, id: \.self) { tag in
-                            filterButton(tag, selected: viewModel.selectedTag == tag) {
-                                viewModel.selectedTag = tag
-                            }
-                        }
-                    } label: {
-                        FilterPill(
-                            title: viewModel.selectedTag ?? "All tags",
-                            systemImage: "tag",
-                            isSelected: viewModel.selectedTag != nil
-                        )
-                    }
-                }
-
-                if viewModel.searchRequest.isActive {
-                    Button("Clear", systemImage: "xmark.circle.fill") {
-                        viewModel.clearSearch()
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.borderless)
-                    .accessibilityHint("Clears the query and all filters")
-                }
-            }
-        }
-        .accessibilityLabel("Search filters")
-    }
-
-    private func filterButton(
-        _ title: String,
-        selected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            if selected {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
-        }
-    }
-}
-
-private struct FilterPill: View {
-    let title: String
-    let systemImage: String
-    let isSelected: Bool
-
-    var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isSelected ? Color.accentColor : .primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                isSelected ? Color.accentColor.opacity(0.14) : Color(uiColor: .secondarySystemBackground),
-                in: Capsule()
-            )
-            .overlay {
-                Capsule()
-                    .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08))
-            }
-    }
-}
-
-private extension MemoryKind {
-    var filterLabel: String {
-        switch self {
-        case .audio: "Voice"
-        case .image: "Images"
-        case .link: "Links"
-        case .pdf: "PDFs"
-        case .text: "Text"
-        }
-    }
-
-    var filterSymbol: String {
-        switch self {
-        case .audio: "waveform"
-        case .image: "photo"
-        case .link: "link"
-        case .pdf: "doc.richtext"
-        case .text: "text.quote"
-        }
     }
 }
 

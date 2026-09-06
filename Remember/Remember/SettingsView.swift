@@ -9,46 +9,53 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 Section {
-                    Picker("Appearance", selection: $appearance) {
+                    Picker(selection: $appearance) {
                         ForEach(AppAppearance.allCases) { option in
                             Text(option.label).tag(option)
                         }
+                    } label: {
+                        SettingsLabel(
+                            title: "Appearance",
+                            systemImage: "circle.lefthalf.filled"
+                        )
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                     .accessibilityHint("Changes Remember's color scheme")
-                } header: {
-                    Text("Appearance")
                 } footer: {
-                    Text("System follows your iPhone appearance setting.")
+                    Text("System matches your iPhone's current appearance.")
                 }
 
-                Section("Organization") {
+                Section("Library") {
                     NavigationLink {
                         OrganizeView(viewModel: viewModel)
                     } label: {
                         SettingsRow(
                             title: "Collections & Tags",
-                            detail: "\(viewModel.collections.count) collections · \(viewModel.tagSummaries.count) tags",
-                            systemImage: "folder.badge.gearshape",
-                            color: .blue
+                            detail: librarySummary,
+                            systemImage: "folder.fill"
                         )
                     }
                 }
 
-                Section("Privacy & AI") {
+                Section {
                     NavigationLink {
                         PrivacyDashboardView(viewModel: viewModel)
                     } label: {
                         SettingsRow(
-                            title: "Privacy, Models & Activity",
-                            detail: "OpenAI processing and the local activity log",
-                            systemImage: "lock.shield.fill",
-                            color: .green
+                            title: "Privacy & AI",
+                            detail: "Models and activity",
+                            systemImage: "hand.raised.fill"
                         )
                     }
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("Review OpenAI processing and activity stored on this iPhone.")
                 }
-
             }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(16)
+            .environment(\.defaultMinListRowHeight, 52)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -68,24 +75,54 @@ struct SettingsView: View {
         }
     }
 
+    private var librarySummary: String {
+        "\(viewModel.collections.count) collections · \(viewModel.tagSummaries.count) tags"
+    }
 }
 
 private struct SettingsRow: View {
     let title: String
     let detail: String
     let systemImage: String
-    let color: Color
 
     var body: some View {
-        Label {
+        HStack(spacing: 12) {
+            SettingsIcon(systemImage: systemImage)
+
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).foregroundStyle(.primary)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(title)
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-        } icon: {
-            Image(systemName: systemImage)
-                .foregroundStyle(color)
-                .frame(width: 28)
         }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct SettingsLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SettingsIcon(systemImage: systemImage)
+            Text(title)
+                .foregroundStyle(.primary)
+        }
+    }
+}
+
+private struct SettingsIcon: View {
+    let systemImage: String
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 30, height: 30)
+            .accessibilityHidden(true)
     }
 }

@@ -108,10 +108,8 @@ struct AskRememberView: View {
 
     private var introduction: some View {
         VStack(spacing: 16) {
-            Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                .font(.system(size: 44))
+            RememberAssistantMark(size: 54)
                 .foregroundStyle(.tint)
-                .accessibilityHidden(true)
             Text("Ask your memories")
                 .font(.title2.bold())
             Text("AI searches your saved memories, checks quoted evidence against the originals, and shows the sources it used. Relevant excerpts are sent to the configured OpenAI service.")

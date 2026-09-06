@@ -4,25 +4,195 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct CaptureMenuButton: View {
+    @Binding var isExpanded: Bool
     let onSelect: (CaptureAction) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dialPosition = CGFloat.zero
+    @GestureState private var dialDragProgress = CGFloat.zero
+
+    private let dialRadius = CGFloat(135)
+    private let visibleActionCount = 4
+
     var body: some View {
-        Menu {
-            ForEach(CaptureAction.allCases) { action in
-                Button(action.title, systemImage: action.systemImage) {
-                    onSelect(action)
+        ZStack(alignment: .bottomTrailing) {
+            if isExpanded {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Capture dial")
+                    .accessibilityValue("Four capture types visible")
+                    .accessibilityHint("Swipe up or down to rotate through capture types")
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment:
+                            rotateDial(by: 1)
+                        case .decrement:
+                            rotateDial(by: -1)
+                        @unknown default:
+                            break
+                        }
+                    }
+                    .transition(.opacity)
+            }
+
+            ForEach(Array(CaptureAction.allCases.enumerated()), id: \.element.id) { index, action in
+                let relativePosition = relativePosition(for: index)
+                let visibility = visibility(for: relativePosition)
+                Button {
+                    select(action)
+                } label: {
+                    fanLabel(for: action)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(action.title)
+                .accessibilityHidden(!isExpanded || visibility < 0.5)
+                .allowsHitTesting(isExpanded && visibility >= 0.72)
+                .offset(isExpanded ? dialOffset(for: relativePosition) : .zero)
+                .scaleEffect(isExpanded ? 0.78 + (0.12 * visibility) : 0.35)
+                .opacity(isExpanded ? visibility : 0)
+                .animation(actionAnimation(for: min(index, visibleActionCount - 1)), value: isExpanded)
+                .zIndex(Double(visibility))
+                .padding(.trailing, 18)
+                .padding(.bottom, 12)
+            }
+
+            Button {
+                setExpanded(!isExpanded)
+            } label: {
+                Image(systemName: isExpanded ? "xmark" : "plus")
+                    .font(.system(size: 23, weight: .semibold))
+                    .frame(width: 26, height: 26)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(Color.accentColor)
+            .padding(.trailing, 18)
+            .padding(.bottom, 12)
+            .accessibilityLabel(isExpanded ? "Close add menu" : "Add a memory")
+            .accessibilityHint(
+                isExpanded
+                    ? "Closes the capture dial. Swipe over the dial to rotate capture types."
+                    : "Shows capture types"
+            )
+        }
+        .frame(width: 225, height: 225, alignment: .bottomTrailing)
+        .simultaneousGesture(dialDragGesture, including: isExpanded ? .all : .none)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isExpanded)
+        .onDisappear { isExpanded = false }
+    }
+
+    private func select(_ action: CaptureAction) {
+        setExpanded(false)
+        onSelect(action)
+    }
+
+    private func setExpanded(_ expanded: Bool) {
+        if expanded { dialPosition = 0 }
+        if reduceMotion {
+            isExpanded = expanded
+        } else {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+                isExpanded = expanded
+            }
+        }
+    }
+
+    private func actionAnimation(for index: Int) -> Animation? {
+        guard !reduceMotion else { return nil }
+        let order = isExpanded ? index : visibleActionCount - index - 1
+        return .spring(response: 0.36, dampingFraction: 0.76)
+            .delay(Double(order) * 0.035)
+    }
+
+    private var dialDragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .updating($dialDragProgress) { value, progress, transaction in
+                transaction.animation = nil
+                progress = dialProgress(for: value.translation)
+            }
+            .onEnded { value in
+                let currentProgress = dialProgress(for: value.translation)
+                let projectedProgress = dialProgress(for: value.predictedEndTranslation)
+                let momentum = min(0.75, max(-0.75, projectedProgress - currentProgress))
+                let targetPosition = dialPosition + currentProgress + momentum
+                if reduceMotion {
+                    dialPosition = targetPosition
+                } else {
+                    withAnimation(.smooth(duration: 0.28)) {
+                        dialPosition = targetPosition
+                    }
                 }
             }
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 23, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.accentColor, in: Circle())
-                .shadow(color: .black.opacity(0.2), radius: 9, y: 4)
+    }
+
+    private func rotateDial(by step: Int) {
+        let newPosition = dialPosition + CGFloat(step)
+        if reduceMotion {
+            dialPosition = newPosition
+        } else {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+                dialPosition = newPosition
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
-        .accessibilityLabel("Add a memory")
-        .accessibilityHint("Choose a note, photo, file, link, or voice recording")
+    }
+
+    private var displayedDialPosition: CGFloat {
+        dialPosition + dialDragProgress
+    }
+
+    private func dialProgress(for translation: CGSize) -> CGFloat {
+        let dominantDistance = abs(translation.width) > abs(translation.height)
+            ? -translation.width
+            : -translation.height
+        return dominantDistance / 76
+    }
+
+    private func relativePosition(for actionIndex: Int) -> CGFloat {
+        let actionCount = CGFloat(CaptureAction.allCases.count)
+        var position = CGFloat(actionIndex) - displayedDialPosition
+        while position < -1 { position += actionCount }
+        while position > CGFloat(visibleActionCount) { position -= actionCount }
+        return position
+    }
+
+    private func visibility(for relativePosition: CGFloat) -> CGFloat {
+        let leadingVisibility = max(0, relativePosition + 1)
+        let trailingVisibility = max(0, CGFloat(visibleActionCount) - relativePosition)
+        return min(1, min(leadingVisibility, trailingVisibility))
+    }
+
+    private func dialOffset(for relativePosition: CGFloat) -> CGSize {
+        let angle = relativePosition * (.pi / 6)
+        return CGSize(
+            width: -dialRadius * sin(angle),
+            height: -dialRadius * cos(angle)
+        )
+    }
+
+    private func fanLabel(for action: CaptureAction) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: action.systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.2), radius: 7, y: 3)
+
+            Text(action.compactTitle)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .frame(width: 52)
     }
 }
 
@@ -99,61 +269,6 @@ struct NewNoteCaptureView: View {
         Task {
             isSaving = true
             let didSave = await viewModel.saveNote(note.text)
-            isSaving = false
-            if didSave { dismiss() }
-        }
-    }
-}
-
-struct LinkCaptureView: View {
-    let viewModel: LibraryViewModel
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var link = ""
-    @State private var context = ""
-    @State private var isSaving = false
-    @FocusState private var focusedField: Field?
-
-    private enum Field { case link, context }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Link") {
-                    TextField("https://example.com", text: $link)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focusedField, equals: .link)
-                }
-                Section("Context (optional)") {
-                    TextField("Why this matters", text: $context, axis: .vertical)
-                        .lineLimit(2...5)
-                        .focused($focusedField, equals: .context)
-                }
-            }
-            .navigationTitle("Save Link")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .disabled(isSaving)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(isSaving || link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .onAppear { focusedField = .link }
-        }
-        .interactiveDismissDisabled(isSaving)
-    }
-
-    private func save() {
-        focusedField = nil
-        Task {
-            isSaving = true
-            let didSave = await viewModel.saveLink(link, context: context)
             isSaving = false
             if didSave { dismiss() }
         }

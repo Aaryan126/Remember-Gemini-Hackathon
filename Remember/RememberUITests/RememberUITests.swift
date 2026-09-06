@@ -23,6 +23,47 @@ final class RememberUITests: XCTestCase {
     }
 
     @MainActor
+    func testRadialCaptureMenuExposesEveryCaptureAction() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let addMemory = app.buttons["Add a memory"]
+        XCTAssertTrue(addMemory.waitForExistence(timeout: 3))
+        let windowFrame = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(addMemory.frame.midX, windowFrame.midX)
+        XCTAssertGreaterThan(addMemory.frame.midY, windowFrame.midY)
+        addMemory.tap()
+
+        let actionNames = ["New Note", "Take Photo", "Choose Photo", "Import File"]
+        let actionButtons = actionNames.map { app.buttons[$0] }
+        for (action, button) in zip(actionNames, actionButtons) {
+            XCTAssertTrue(button.waitForExistence(timeout: 2), "Missing radial action: \(action)")
+        }
+        for firstIndex in actionButtons.indices {
+            for secondIndex in actionButtons.indices where secondIndex > firstIndex {
+                let firstFrame = actionButtons[firstIndex].frame
+                let secondFrame = actionButtons[secondIndex].frame
+                let horizontalDistance = firstFrame.midX - secondFrame.midX
+                let verticalDistance = firstFrame.midY - secondFrame.midY
+                let centerDistance = sqrt(
+                    horizontalDistance * horizontalDistance
+                        + verticalDistance * verticalDistance
+                )
+                XCTAssertGreaterThanOrEqual(
+                    centerDistance,
+                    44,
+                    "Radial actions overlap: \(actionNames[firstIndex]) and \(actionNames[secondIndex])"
+                )
+            }
+        }
+
+        let captureDial = app.otherElements["Capture dial"]
+        XCTAssertTrue(captureDial.exists)
+        app.buttons["Choose Photo"].swipeUp()
+        XCTAssertTrue(app.buttons["Record Voice"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testThreeSurfaceNavigationAndTemporaryAI() throws {
         let app = XCUIApplication()
         app.launch()
@@ -43,8 +84,17 @@ final class RememberUITests: XCTestCase {
         composer.tap()
         composer.typeText("temporary draft")
         app.buttons["Close"].tap()
-        XCTAssertTrue(app.navigationBars["Remember"].waitForExistence(timeout: 3))
+        XCTAssertTrue(aiHelp.waitForExistence(timeout: 3))
 
+        XCTAssertFalse(app.buttons["All types"].exists)
+        XCTAssertFalse(app.buttons["Any time"].exists)
+
+        tabBar.buttons["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["Appearance"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Collections & Tags"].exists)
+        XCTAssertTrue(app.staticTexts["Privacy & AI"].exists)
+
+        tabBar.buttons["Memories"].tap()
         aiHelp.tap()
         XCTAssertTrue(app.navigationBars["AI Help"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.textFields["Ask about what you saved"].value as? String, "Ask about what you saved")
@@ -57,8 +107,6 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Take Photo"].exists)
         XCTAssertTrue(app.buttons["Choose Photo"].exists)
         XCTAssertTrue(app.buttons["Import File"].exists)
-        XCTAssertTrue(app.buttons["Save Link"].exists)
-        XCTAssertTrue(app.buttons["Record Voice"].exists)
     }
 
     @MainActor

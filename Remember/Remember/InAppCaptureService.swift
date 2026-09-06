@@ -6,7 +6,6 @@ nonisolated enum CaptureAction: String, CaseIterable, Identifiable, Sendable {
     case camera
     case photo
     case file
-    case link
     case voice
 
     var id: String { rawValue }
@@ -17,8 +16,17 @@ nonisolated enum CaptureAction: String, CaseIterable, Identifiable, Sendable {
         case .camera: "Take Photo"
         case .photo: "Choose Photo"
         case .file: "Import File"
-        case .link: "Save Link"
         case .voice: "Record Voice"
+        }
+    }
+
+    var compactTitle: String {
+        switch self {
+        case .note: "Note"
+        case .camera: "Camera"
+        case .photo: "Photos"
+        case .file: "File"
+        case .voice: "Voice"
         }
     }
 
@@ -28,7 +36,6 @@ nonisolated enum CaptureAction: String, CaseIterable, Identifiable, Sendable {
         case .camera: "camera"
         case .photo: "photo.on.rectangle"
         case .file: "doc.badge.plus"
-        case .link: "link"
         case .voice: "mic"
         }
     }
