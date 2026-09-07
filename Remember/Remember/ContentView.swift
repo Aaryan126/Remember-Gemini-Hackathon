@@ -68,6 +68,9 @@ struct ContentView: View {
 struct MemoryLibraryView: View {
     let viewModel: LibraryViewModel
     let onAsk: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showsVoiceCapture = false
     @State private var showsNoteCapture = false
     @State private var showsCamera = false
@@ -75,11 +78,14 @@ struct MemoryLibraryView: View {
     @State private var showsFileImporter = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var pendingImage: PendingImage?
+    @State private var pendingMediaCleanupURL: URL?
+    @State private var isLoadingPhoto = false
     @State private var isSearchPresented = false
     @State private var isCaptureMenuExpanded = false
+    @State private var detailPath: [UUID] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $detailPath) {
             Group {
                 if viewModel.items.isEmpty, !viewModel.isSynchronizing {
                     emptyLibrary
@@ -88,6 +94,9 @@ struct MemoryLibraryView: View {
                 }
             }
             .navigationTitle("")
+            .navigationDestination(for: UUID.self) { id in
+                MemoryDetailView(memoryID: id, viewModel: viewModel)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: Binding(
@@ -107,14 +116,15 @@ struct MemoryLibraryView: View {
             .sheet(isPresented: $showsNoteCapture) {
                 NewNoteCaptureView(viewModel: viewModel)
             }
-            .sheet(item: $pendingImage) { pending in
-                ImageCaptureConfirmationView(imageURL: pending.url, viewModel: viewModel)
+            .sheet(item: $pendingImage, onDismiss: releasePendingMedia) { pending in
+                ImageCaptureConfirmationView(imageURL: pending.url, kind: pending.kind, viewModel: viewModel)
             }
             .fullScreenCover(isPresented: $showsCamera) {
                 CameraPicker { image in
                     do {
                         let url = try image.rememberTemporaryJPEGURL()
                         showsCamera = false
+                        pendingMediaCleanupURL = url
                         pendingImage = PendingImage(url: url)
                     } catch {
                         showsCamera = false
@@ -128,11 +138,12 @@ struct MemoryLibraryView: View {
             .photosPicker(
                 isPresented: $showsPhotoPicker,
                 selection: $selectedPhoto,
-                matching: .images
+                matching: .any(of: [.images, .videos]),
+                preferredItemEncoding: .current
             )
             .fileImporter(
                 isPresented: $showsFileImporter,
-                allowedContentTypes: [.image, .pdf, .plainText],
+                allowedContentTypes: [.image, .movie, .pdf, .plainText],
                 allowsMultipleSelection: false
             ) { result in
                 guard case .success(let urls) = result, let url = urls.first else {
@@ -142,7 +153,15 @@ struct MemoryLibraryView: View {
                 Task { _ = await viewModel.saveImportedFile(from: url) }
             }
             .overlay {
-                if viewModel.items.isEmpty, viewModel.isSynchronizing {
+                if isLoadingPhoto {
+                    VStack(spacing: 16) {
+                        ProgressView("Loading from Photos…")
+                        Text("Videos stored in iCloud may take a moment.").font(.footnote)
+                        Button("Cancel import") { selectedPhoto = nil }
+                    }
+                    .padding(24)
+                    .background(.regularMaterial, in: .rect(cornerRadius: 24))
+                } else if viewModel.items.isEmpty, viewModel.isSynchronizing {
                     ProgressView("Opening your library…")
                 }
             }
@@ -166,42 +185,81 @@ struct MemoryLibraryView: View {
             .onSubmit(of: .search) {
                 Task { await viewModel.searchWithAI() }
             }
-            .onChange(of: selectedPhoto) { _, item in
-                guard let item else { return }
-                Task {
-                    defer { selectedPhoto = nil }
-                    do {
-                        pendingImage = PendingImage(url: try await item.temporaryImageURL())
-                    } catch {
+            .task(id: selectedPhoto) {
+                guard let item = selectedPhoto else { isLoadingPhoto = false; return }
+                isLoadingPhoto = true
+                defer { isLoadingPhoto = false }
+                do {
+                    let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
+                    let url: URL
+                    if isVideo {
+                        guard let video = try await item.loadTransferable(type: PhotoVideoTransfer.self) else {
+                            throw InAppCaptureError.unsupportedFile
+                        }
+                        url = video.url
+                    } else {
+                        url = try await item.temporaryImageURL()
+                    }
+                    guard !Task.isCancelled else {
+                        try? FileManager.default.removeItem(at: url)
+                        return
+                    }
+                    pendingMediaCleanupURL = url
+                    pendingImage = PendingImage(url: url, kind: isVideo ? .video : .image)
+                    selectedPhoto = nil
+                } catch is CancellationError {
+                    return
+                } catch {
+                    if !Task.isCancelled {
                         viewModel.reportError(error)
+                        selectedPhoto = nil
                     }
                 }
             }
         }
+        .blur(radius: isCaptureMenuExpanded && !reduceTransparency ? 12 : 0)
+        .allowsHitTesting(!isCaptureMenuExpanded)
+        .accessibilityHidden(isCaptureMenuExpanded)
         .overlay {
             if isCaptureMenuExpanded {
                 ZStack {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .opacity(0.38)
-                    Color.black.opacity(0.10)
+                    if reduceTransparency {
+                        Color(uiColor: .systemBackground)
+                    } else {
+                        Rectangle().fill(.regularMaterial).opacity(0.55)
+                        Color.black.opacity(colorScheme == .dark ? 0.18 : 0.06)
+                    }
                 }
                 .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            isCaptureMenuExpanded = false
-                        }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                        isCaptureMenuExpanded = false
                     }
-                    .transition(.opacity)
-                    .accessibilityHidden(true)
+                }
+                .transition(.opacity)
+                .accessibilityHidden(true)
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            CaptureMenuButton(
-                isExpanded: $isCaptureMenuExpanded,
-                onSelect: selectCaptureAction
-            )
+            if detailPath.isEmpty && !isLoadingPhoto {
+                CaptureMenuButton(
+                    isExpanded: $isCaptureMenuExpanded,
+                    onSelect: selectCaptureAction
+                )
+            }
+        }
+        .onChange(of: detailPath) { _, path in
+            if !path.isEmpty { isCaptureMenuExpanded = false }
+        }
+    }
+
+    private func releasePendingMedia() {
+        // Sheet handoffs can make the preview disappear transiently. Cleanup belongs
+        // to the presentation owner, only after the confirmation has actually closed.
+        if let url = pendingMediaCleanupURL {
+            try? FileManager.default.removeItem(at: url)
+            pendingMediaCleanupURL = nil
         }
     }
 
@@ -227,12 +285,11 @@ struct MemoryLibraryView: View {
                 } else {
                     MasonryLayout(spacing: 18) {
                         ForEach(viewModel.visibleItems) { item in
-                            NavigationLink {
-                                MemoryDetailView(memoryID: item.id, viewModel: viewModel)
-                            } label: {
+                            NavigationLink(value: item.id) {
                                 MemoryCard(item: item)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("library-memory-\(item.id)")
                         }
                     }
                     .padding(.top, 10)
@@ -401,6 +458,7 @@ struct RememberAssistantMark: View {
 private struct PendingImage: Identifiable {
     let id = UUID()
     let url: URL
+    var kind: MemoryKind = .image
 }
 
 private enum CaptureUIError: LocalizedError {
@@ -416,7 +474,7 @@ private struct MemoryCard: View {
 
     var body: some View {
         Group {
-            if item.memory.kind == .image {
+            if item.memory.kind == .image || item.memory.kind == .video {
                 imageCard
             } else {
                 compactCard
@@ -430,7 +488,18 @@ private struct MemoryCard: View {
 
     private var imageCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            LocalImageView(url: item.originalURL, maximumPixelSize: 900, contentMode: .fit)
+            Group {
+                if item.memory.kind == .video {
+                    LocalVideoPosterView(url: item.originalURL)
+                        .overlay(alignment: .bottomLeading) {
+                            Label("Video", systemImage: "play.fill")
+                                .font(.caption.bold()).foregroundStyle(.white)
+                                .padding(8).background(.black.opacity(0.65), in: .capsule).padding(8)
+                        }
+                } else {
+                    LocalImageView(url: item.originalURL, maximumPixelSize: 900, contentMode: .fit)
+                }
+            }
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 96)
                 .background(Color(uiColor: .tertiarySystemBackground))

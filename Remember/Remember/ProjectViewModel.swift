@@ -77,6 +77,16 @@ final class ProjectViewModel {
         await perform { store in try await store.renameProjectCluster(id: id, title: title) }
     }
 
+    func archiveThread(_ id: UUID, archived: Bool) async -> Bool {
+        do {
+            try await liveStore().setProjectThreadArchived(id: id, archived: archived)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func assign(_ memoryID: UUID, clusters: Set<UUID>) async {
         await perform { store in try await store.assignProjectMemory(id: memoryID, clusters: clusters) }
     }
@@ -111,6 +121,21 @@ final class ProjectViewModel {
 }
 
 extension MemoryStore {
+    func setProjectThreadArchived(id: UUID, archived: Bool) async throws {
+        let events = try await provenanceEvents()
+        let snapshot = try ProvenanceSnapshot.replay(events)
+        guard let cluster = snapshot.clusters[id], !cluster.retired else { throw ProvenanceError.invalidCorrection }
+        guard snapshot.archivedClusterIDs.contains(id) != archived else { return }
+        var payload = ProvenancePayload()
+        payload.clusterID = id
+        payload.title = cluster.title
+        payload.rationale = archived
+            ? "You archived this thread. Its memories and other thread memberships are preserved."
+            : "You restored this thread from the archive."
+        try await appendProvenance(ProvenanceEvent(kind: archived ? .archive : .restore, origin: "user", payload: payload),
+            expectedSequence: events.last?.sequence)
+    }
+
     func restoreProjectRevision(id: UUID) async throws {
         let files = try LibraryFileStore(directoryURL: LibraryFileStore.defaultDirectory())
         try await databasePool.write { db in
@@ -141,7 +166,8 @@ extension MemoryStore {
         let clean = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
         let events = try await provenanceEvents()
         let snapshot = try ProvenanceSnapshot.replay(events)
-        guard !clean.isEmpty, let cluster = snapshot.clusters[id], !cluster.retired else { throw ProvenanceError.invalidCorrection }
+        guard !clean.isEmpty, let cluster = snapshot.clusters[id], !cluster.retired,
+              !snapshot.archivedClusterIDs.contains(id) else { throw ProvenanceError.invalidCorrection }
         var payload = ProvenancePayload()
         payload.clusterID = id
         payload.title = clean
@@ -154,7 +180,7 @@ extension MemoryStore {
         let events = try await provenanceEvents()
         let snapshot = try ProvenanceSnapshot.replay(events)
         guard let memory = snapshot.memories[id], !memory.isArchived,
-              clusters.allSatisfy({ snapshot.clusters[$0]?.retired == false }) else { throw ProvenanceError.invalidCorrection }
+              clusters.allSatisfy({ snapshot.clusters[$0]?.retired == false && !snapshot.archivedClusterIDs.contains($0) }) else { throw ProvenanceError.invalidCorrection }
         var payload = ProvenancePayload()
         // Removing every membership creates a fresh branch, so no capture becomes invisible.
         let selected: Set<UUID>

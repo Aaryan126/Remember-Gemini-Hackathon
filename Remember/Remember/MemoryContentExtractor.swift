@@ -141,6 +141,15 @@ actor MemoryContentExtractor {
         supportingText: String?
     ) async throws -> ExtractedMemoryContent {
         switch memory.kind {
+        case .video:
+            // Index only what the user supplied, never imply the movie was transcribed or watched.
+            let caption = Self.nonempty(memory.userCaption) ?? ""
+            return ExtractedMemoryContent(
+                text: caption,
+                chunks: MemoryTextChunker.chunks(from: caption, locatorPrefix: "Video caption", extractionMethod: .plainText),
+                isPartial: true,
+                visualLabels: []
+            )
         case .audio:
             guard let transcript = Self.nonempty(supportingText) else {
                 throw MemoryContentExtractionError.missingTranscript

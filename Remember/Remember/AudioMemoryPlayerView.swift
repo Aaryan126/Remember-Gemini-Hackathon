@@ -4,6 +4,8 @@ import SwiftUI
 
 struct AudioMemoryPlayerView: View {
     let url: URL
+    var onOpenMemory: (() -> Void)? = nil
+    @Environment(\.scenePhase) private var scenePhase
     @State private var player = AudioMemoryPlayer()
 
     var body: some View {
@@ -16,12 +18,12 @@ struct AudioMemoryPlayerView: View {
             }
             .accessibilityLabel(player.isPlaying ? "Stop voice memory" : "Play voice memory")
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Voice memory")
-                    .font(.headline)
-                Text(player.statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let onOpenMemory {
+                Button(action: onOpenMemory) { recordingLabel }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open voice memory")
+            } else {
+                recordingLabel
             }
             Spacer()
             Image(systemName: "waveform")
@@ -32,6 +34,19 @@ struct AudioMemoryPlayerView: View {
         .padding()
         .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 20))
         .onDisappear { player.stop() }
+        .onChange(of: url) { _, _ in player.stop() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { player.stop() }
+        }
+    }
+
+    private var recordingLabel: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Voice memory").font(.headline)
+            Text(player.statusText).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 

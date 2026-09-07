@@ -14,7 +14,7 @@ nonisolated enum CaptureAction: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .note: "New Note"
         case .camera: "Take Photo"
-        case .photo: "Choose Photo"
+        case .photo: "Choose Photo or Video"
         case .file: "Import File"
         case .voice: "Record Voice"
         }
@@ -45,6 +45,7 @@ nonisolated protocol InAppCaptureServing: Sendable {
     func saveNote(_ text: String) throws
     func saveLink(_ urlText: String, context: String?) throws
     func saveImage(from sourceURL: URL, context: String?) throws
+    func saveVideo(from sourceURL: URL, context: String?) throws
     func saveImportedFile(from sourceURL: URL) throws
 }
 
@@ -61,7 +62,7 @@ nonisolated enum InAppCaptureError: LocalizedError, Equatable {
         case .invalidLink:
             "Enter a complete HTTP or HTTPS link."
         case .unsupportedFile:
-            "Remember can import an image, PDF, or plain-text file."
+            "Remember can import an image, video, PDF, or plain-text file."
         case .unreadableTextFile:
             "Remember could not read this text file."
         }
@@ -111,6 +112,8 @@ nonisolated struct InAppCaptureService: InAppCaptureServing {
 
         if inferredType.conforms(to: .image) {
             _ = try inbox.saveImage(from: sourceURL, caption: nil)
+        } else if inferredType.conforms(to: .movie) {
+            try saveVideo(from: sourceURL, context: nil)
         } else if inferredType.conforms(to: .pdf) {
             _ = try inbox.savePDF(from: sourceURL, caption: nil)
         } else if inferredType.conforms(to: .plainText) || inferredType.conforms(to: .text) {
@@ -125,6 +128,10 @@ nonisolated struct InAppCaptureService: InAppCaptureServing {
 
     private static func normalized(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func saveVideo(from sourceURL: URL, context: String?) throws {
+        _ = try inbox.saveVideo(from: sourceURL, caption: Self.optional(context))
     }
 
     private static func optional(_ text: String?) -> String? {

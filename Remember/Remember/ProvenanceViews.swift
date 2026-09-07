@@ -16,6 +16,7 @@ struct ProvenanceEventRow: View {
     let event: ProvenanceEvent
     var displayMemory: MemoryItem? = nil
     var showsIcon = true
+    var showsRiverJunction = false
     var body: some View {
         let payload = try? event.payload()
         HStack(alignment: .top, spacing: 12) {
@@ -25,6 +26,7 @@ struct ProvenanceEventRow: View {
             }
             VStack(alignment: .leading, spacing: 5) {
                 Text(displayMemory?.displayTitle ?? payload?.memory?.displayTitle ?? payload?.title ?? event.kind.label).font(.headline).lineLimit(2)
+                    .modifier(RiverTitleJunction(kind: event.kind, isVisible: showsRiverJunction))
                 Text(event.kind.label + " · " + event.timestamp.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption).foregroundStyle(.secondary)
                 if let rationale = payload?.rationale, !rationale.isEmpty, rationale != event.kind.label {
@@ -35,85 +37,19 @@ struct ProvenanceEventRow: View {
     }
 }
 
-struct ProjectGraphView: View {
-    let model: ProjectViewModel
-    @State private var scale = 0.75
-    @GestureState private var magnification = 1.0
-    private var snapshot: ProvenanceSnapshot { model.snapshot }
-    private var clusters: [ProvenanceCluster] { Array(snapshot.activeClusters.prefix(40)) }
-    private func position(_ index: Int) -> CGPoint {
-        guard index > 0 else { return CGPoint(x: 800, y: 800) }
-        var ring = 1
-        var offset = index - 1
-        while offset >= 6 * ring { offset -= 6 * ring; ring += 1 }
-        let angle = Double(offset) * 2 * Double.pi / Double(6 * ring)
-        let radius = Double(ring) * 180
-        return CGPoint(x: 800 + cos(angle) * radius, y: 800 + sin(angle) * radius)
-    }
-    var body: some View {
-        ScrollView {
-            HStack {
-                Text("\(snapshot.activeClusters.count) growing threads").font(.headline)
-                Spacer()
-                Button { scale = max(0.5, scale - 0.25) } label: { Image(systemName: "minus.magnifyingglass") }.accessibilityLabel("Zoom out")
-                Button { scale = min(2, scale + 0.25) } label: { Image(systemName: "plus.magnifyingglass") }.accessibilityLabel("Zoom in")
-            }.padding(.horizontal)
-            ScrollView([.horizontal, .vertical]) {
-                ZStack(alignment: .topLeading) {
-                    Canvas { context, _ in
-                        for (index, cluster) in clusters.enumerated() {
-                            for next in clusters.indices where next > index && related(cluster, clusters[next]) {
-                                var path = Path()
-                                path.move(to: position(index)); path.addLine(to: position(next))
-                                context.stroke(path, with: .color(.secondary.opacity(0.25)), lineWidth: 2)
-                            }
-                        }
-                    }.accessibilityHidden(true)
-                    ForEach(Array(clusters.enumerated()), id: \.element.id) { index, cluster in
-                        let count = snapshot.members(of: cluster.id).count
-                        let size = min(104.0, 62 + sqrt(Double(count)) * 10)
-                        NavigationLink { ClusterRiverView(clusterID: cluster.id, model: model) } label: {
-                            VStack(spacing: 8) {
-                                Text("\(count)").font(.title2.weight(.semibold))
-                                    .frame(width: size, height: size)
-                                    .background(.tint.opacity(0.12), in: Circle()).overlay(Circle().stroke(.tint.opacity(0.3)))
-                                Text(cluster.title).font(.subheadline.weight(.medium)).lineLimit(2).frame(width: 152)
-                            }.multilineTextAlignment(.center).frame(width: 160, height: 156)
-                        }.buttonStyle(.plain).position(position(index)).accessibilityLabel("\(cluster.title), \(count) memories")
-                    }
-                }.frame(width: 1600, height: 1600)
-                    .scaleEffect(min(2, max(0.5, scale * magnification)), anchor: .topLeading)
-                    .frame(width: 1600 * scale, height: 1600 * scale, alignment: .topLeading)
-                    .gesture(MagnifyGesture().updating($magnification) { value, state, _ in state = value.magnification }
-                        .onEnded { scale = min(2, max(0.5, scale * $0.magnification)) })
-            }.defaultScrollAnchor(.center).frame(height: 410).background(.secondary.opacity(0.035))
-            Text("Connections show shared sources or tags. Drag to explore; pinch to zoom.")
-                .font(.caption).foregroundStyle(.secondary).padding()
-            LazyVStack(alignment: .leading) {
-                ForEach(snapshot.activeClusters) { cluster in
-                    NavigationLink { ClusterRiverView(clusterID: cluster.id, model: model) } label: {
-                        HStack { Text(cluster.title); Spacer(); Text("\(snapshot.members(of: cluster.id).count)"); Image(systemName: "chevron.right") }
-                            .padding().background(.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-                    }.buttonStyle(.plain)
-                }
-            }.padding(.horizontal)
-        }
-    }
-    private func related(_ first: ProvenanceCluster, _ second: ProvenanceCluster) -> Bool {
-        let a = Set(snapshot.members(of: first.id).map(\.id)), b = Set(snapshot.members(of: second.id).map(\.id))
-        if !a.isDisjoint(with: b) { return true }
-        let tagsA = Set(snapshot.members(of: first.id).flatMap(\.tags)), tagsB = Set(snapshot.members(of: second.id).flatMap(\.tags))
-        return !tagsA.isEmpty && Double(tagsA.intersection(tagsB).count) / Double(tagsA.union(tagsB).count) >= 0.5
-    }
-}
-
 struct ClusterRiverView: View {
     let clusterID: UUID
     let model: ProjectViewModel
+    @Environment(\.dismiss) private var dismiss
     @State private var isHistorical = false
     @State private var date = Date()
     @State private var title = ""
     @State private var showsRename = false
+    @State private var showsDelete = false
+    @State private var isDeleting = false
+    @State private var selectedMemory: MemoryItem?
+    @State private var selectedMemoryIsHistorical = false
+    @State private var showsMemory = false
     @State private var limit = 50
     private var snapshot: ProvenanceSnapshot { model.historical(at: isHistorical ? date : nil) }
     private var cluster: ProvenanceCluster? { snapshot.clusters[clusterID] }
@@ -152,34 +88,101 @@ struct ClusterRiverView: View {
                     Label(cluster.title, systemImage: "arrow.triangle.merge").font(.headline)
                 }
             }
-            Section("Sources") {
-                ForEach(snapshot.members(of: clusterID)) { memory in
-                    NavigationLink { ProjectSourceView(memory: memory, model: model, historical: isHistorical) } label: {
-                        VStack(alignment: .leading) { Text(memory.displayTitle); Text(memory.kind.rawValue.capitalized).font(.caption).foregroundStyle(.secondary) }
-                    }.accessibilityIdentifier("project-source-\(memory.id)")
-                }
-            }
             Section("River") {
-                if events.count > limit { Button("Unfold earlier history") { limit += 50 } }
+                if events.count > limit {
+                    Button("Unfold earlier history") { limit += 50 }
+                        .listRowInsets(EdgeInsets(top: 16, leading: 44, bottom: 16, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(RiverStreamMark())
+                }
                 ForEach(Array(events.suffix(limit))) { event in
-                    NavigationLink { ProvenanceEventView(event: event, model: model, historical: isHistorical) } label: {
-                        HStack(spacing: 12) {
-                            RiverStreamMark(event: event, lineage: Array(model.snapshot.ancestors(of: clusterID)).sorted { $0.uuidString < $1.uuidString })
-                                .frame(width: 52).accessibilityHidden(true)
-                            ProvenanceEventRow(event: event, displayMemory: event.memoryID.flatMap { snapshot.memories[$0] }, showsIcon: false)
+                    Group {
+                        if let original = event.riverSource {
+                            let source = event.riverMemory(in: snapshot)
+                            VStack(alignment: .leading, spacing: 12) {
+                                Button { openMemory(source ?? original) } label: {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            Text((source ?? original).displayTitle).font(.headline).lineLimit(3)
+                                                .modifier(RiverTitleJunction(kind: event.kind))
+                                            Text((event.kind == .revision ? "Revised · " : "") +
+                                                 (event.kind == .revision ? event.timestamp : original.createdAt)
+                                                    .formatted(date: .abbreviated, time: .shortened))
+                                                .font(.caption).foregroundStyle(.secondary)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Opens this memory; Back returns to the river")
+                                .accessibilityIdentifier("project-source-\(original.id)")
+                                RiverMediaView(memory: original, onOpenMemory: { openMemory(source ?? original) })
+                                    .id(original.originalFilename)
+                                if original.kind == .text, let text = original.userCaption, !text.isEmpty {
+                                    Text(text).font(.body).textSelection(.enabled)
+                                }
+                            }
+                        } else {
+                            NavigationLink { ProvenanceEventView(event: event, model: model, historical: isHistorical) } label: {
+                                ProvenanceEventRow(event: event, displayMemory: event.memoryID.flatMap { snapshot.memories[$0] }, showsIcon: false, showsRiverJunction: true)
+                            }
                         }
                     }
+                    .listRowInsets(EdgeInsets(top: 16, leading: 44, bottom: 16, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(RiverStreamMark())
                 }
             }
-        }.listStyle(.insetGrouped).navigationTitle("Thread history").navigationBarTitleDisplayMode(.inline)
-            .toolbar { if !isHistorical, cluster?.retired == false { Button("Rename") { title = cluster?.title ?? ""; showsRename = true } } }
-            .alert("Name this topic", isPresented: $showsRename) {
+        }.listStyle(.insetGrouped).listRowSpacing(0)
+            .navigationTitle("Thread history").navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $showsMemory) {
+                if let selectedMemory {
+                    ProjectSourceView(memory: selectedMemory, model: model, historical: selectedMemoryIsHistorical)
+                }
+            }
+            .toolbar {
+                if !isHistorical, cluster?.retired == false, !snapshot.archivedClusterIDs.contains(clusterID) {
+                    Menu {
+                        Button("Edit thread", systemImage: "pencil") { title = cluster?.title ?? ""; showsRename = true }
+                        Button("Delete thread…", systemImage: "trash", role: .destructive) { showsDelete = true }
+                    } label: {
+                        Image(systemName: "ellipsis").rotationEffect(.degrees(90))
+                            .frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel("Thread options")
+                    .disabled(isDeleting)
+                }
+            }
+            .alert("Edit thread", isPresented: $showsRename) {
                 TextField("Topic name", text: $title)
                 Button("Save") { Task { await model.rename(clusterID, title: title) } }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog("Delete this thread?", isPresented: $showsDelete, titleVisibility: .visible) {
+                Button("Delete thread", role: .destructive) {
+                    Task {
+                        isDeleting = true
+                        let saved = await model.archiveThread(clusterID, archived: true)
+                        isDeleting = false
+                        if saved { dismiss() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The thread moves to Archive. Its memories stay in Memories and any other threads. You can restore the thread from Settings → Archive.")
             }
             .task { await model.recap(clusterID) }
             .safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
+    }
+    private func openMemory(_ memory: MemoryItem) {
+        selectedMemory = memory
+        selectedMemoryIsHistorical = isHistorical ||
+            model.snapshot.memories[memory.id]?.originalFilename != memory.originalFilename
+        showsMemory = true
     }
     private var comparison: some View {
         let before = Dictionary(uniqueKeysWithValues: snapshot.members(of: clusterID).map { ($0.id, $0) })
@@ -252,34 +255,58 @@ struct ProvenanceEventView: View {
 }
 
 private struct RiverStreamMark: View {
-    let event: ProvenanceEvent
-    let lineage: [UUID]
     var body: some View {
-        Canvas { context, size in
-            let payload = try? event.payload()
-            let lanes = max(1, min(4, lineage.count))
-            func x(_ id: UUID?) -> CGFloat {
-                let index = id.flatMap { lineage.firstIndex(of: $0) } ?? 0
-                return 7 + CGFloat(index % lanes) * 12
+        ZStack {
+            Color(uiColor: .secondarySystemGroupedBackground)
+            Canvas { context, size in
+                // Row backgrounds include the content insets. With zero row
+                // spacing, these full-height rails meet even beside tall media.
+                let x: CGFloat = 16
+                var trunk = Path()
+                trunk.move(to: CGPoint(x: x, y: 0))
+                trunk.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(trunk, with: .color(.accentColor.opacity(0.45)), lineWidth: 2)
             }
-            for lane in 0..<lanes {
-                var line = Path()
-                let position = 7 + CGFloat(lane) * 12
-                line.move(to: CGPoint(x: position, y: 0)); line.addLine(to: CGPoint(x: position, y: size.height))
-                context.stroke(line, with: .color(.accentColor.opacity(0.16)), lineWidth: 2)
-            }
-            let target = x(payload?.clusterID ?? event.memoryID)
-            if event.kind == .merge {
-                for parent in payload?.parents ?? [] {
-                    var tributary = Path()
-                    tributary.move(to: CGPoint(x: x(parent), y: 0))
-                    tributary.addCurve(to: CGPoint(x: target, y: size.height / 2),
-                        control1: CGPoint(x: x(parent), y: size.height / 3), control2: CGPoint(x: target, y: size.height / 3))
-                    context.stroke(tributary, with: .color(.accentColor), lineWidth: 2)
+        }.accessibilityHidden(true).allowsHitTesting(false)
+    }
+}
+
+private struct RiverTitleJunction: ViewModifier {
+    let kind: ProvenanceKind
+    var isVisible = true
+    @ScaledMetric(relativeTo: .headline) private var capHeight = UIFont.preferredFont(
+        forTextStyle: .headline,
+        compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
+    ).capHeight
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: Alignment(horizontal: .leading, vertical: .firstTextBaseline)) {
+            if isVisible {
+                Canvas { context, _ in
+                    let x: CGFloat = 6
+                    let junction: CGFloat = 18
+                    var branch = Path()
+                    branch.move(to: CGPoint(x: x, y: junction))
+                    branch.addLine(to: CGPoint(x: 24, y: junction))
+                    context.stroke(branch, with: .color(.accentColor.opacity(0.3)), lineWidth: 2)
+                    if kind == .merge {
+                        var tributary = Path()
+                        tributary.move(to: CGPoint(x: 22, y: 0))
+                        tributary.addCurve(to: CGPoint(x: x, y: junction),
+                            control1: CGPoint(x: 22, y: 10), control2: CGPoint(x: x, y: 10))
+                        context.stroke(tributary, with: .color(.accentColor), lineWidth: 2)
+                    }
+                    let diameter: CGFloat = kind == .merge ? 12 : 8
+                    context.fill(Path(ellipseIn: CGRect(x: x - diameter / 2, y: junction - diameter / 2,
+                                                       width: diameter, height: diameter)), with: .color(.accentColor))
                 }
+                .frame(width: 24, height: 24)
+                // The first baseline is measured from the actual title, even
+                // when it wraps. Half the scaled cap height gives its optical center.
+                .alignmentGuide(.firstTextBaseline) { _ in 18 + capHeight / 2 }
+                .offset(x: -34)
+                .accessibilityHidden(true).allowsHitTesting(false)
             }
-            let diameter: CGFloat = event.kind == .merge ? 12 : 8
-            context.fill(Path(ellipseIn: CGRect(x: target - diameter / 2, y: size.height / 2 - diameter / 2, width: diameter, height: diameter)), with: .color(.accentColor))
         }
     }
 }
@@ -294,6 +321,7 @@ struct ProjectSourceView: View {
         List {
             Section {
                 Text(memory.displayTitle).font(.title2.bold())
+                RiverMediaView(memory: memory).id(memory.originalFilename)
                 LabeledContent("Captured", value: memory.createdAt.formatted(date: .abbreviated, time: .shortened))
                 Text(memory.extractedText ?? memory.userCaption ?? memory.displaySummary ?? "Extraction is pending. The original is saved.").textSelection(.enabled)
                 Button("Open saved original") {
@@ -320,7 +348,7 @@ struct ProjectSourceView: View {
                 Button("Archive memory") { Task { await model.archive(memory.id, archived: true) } }
             }
         }.navigationTitle(historical ? "Saved revision" : "Memory").quickLookPreview($preview)
-            .onAppear { selected = model.snapshot.memberships[memory.id, default: []] }
+            .onAppear { selected = model.snapshot.memberships[memory.id, default: []].subtracting(model.snapshot.archivedClusterIDs) }
             .safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
     }
 }
@@ -329,7 +357,20 @@ struct ProjectArchiveView: View {
     let model: ProjectViewModel
     var body: some View {
         List {
-            Section { Text("Archived originals and history stay on this device. Restore a memory to return it to browsing and search.").font(.subheadline).foregroundStyle(.secondary) }
+            Section { Text("Restore deleted threads or archived memories here. Their originals and history stay on this device.").font(.subheadline).foregroundStyle(.secondary) }
+            if !model.snapshot.archivedClusters.isEmpty {
+                Section("Threads") {
+                    ForEach(model.snapshot.archivedClusters) { cluster in
+                        HStack {
+                            Text(cluster.title)
+                            Spacer()
+                            Button("Restore") { Task { _ = await model.archiveThread(cluster.id, archived: false) } }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Restore thread \(cluster.title)")
+                        }
+                    }
+                }
+            }
             ForEach(model.snapshot.memories.values.filter(\.isArchived).sorted { $0.updatedAt > $1.updatedAt }) { memory in
                 VStack(alignment: .leading, spacing: 8) {
                     NavigationLink { ProjectSourceView(memory: memory, model: model, historical: true) } label: { Text(memory.displayTitle) }

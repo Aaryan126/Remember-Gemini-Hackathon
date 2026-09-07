@@ -39,6 +39,7 @@ nonisolated enum MemoryAnalysisParser {
                 switch kind {
                 case .audio: "Voice memory"
                 case .image: "Saved image"
+                case .video: "Saved video"
                 case .link: "Saved link"
                 case .pdf: "Saved PDF"
                 case .text: "Saved note"

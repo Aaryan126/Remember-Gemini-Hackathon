@@ -4,6 +4,7 @@ import GRDB
 nonisolated enum MemoryKind: String, Codable, DatabaseValueConvertible, Hashable, Sendable {
     case audio
     case image
+    case video
     case link
     case pdf
     case text
@@ -89,6 +90,7 @@ nonisolated struct MemoryItem: Codable, Equatable, FetchableRecord, Identifiable
         switch kind {
         case .audio: return "Voice memory"
         case .image: return "Untitled image"
+        case .video: return "Saved video"
         case .link: return "Saved link"
         case .pdf: return "Saved PDF"
         case .text: return "Text note"

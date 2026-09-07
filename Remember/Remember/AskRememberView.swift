@@ -321,6 +321,7 @@ private struct ChatMessageView: View {
         switch kind {
         case .audio: "waveform"
         case .image: "photo"
+        case .video: "video"
         case .link: "link"
         case .pdf: "doc.richtext"
         case .text: "text.quote"

@@ -262,6 +262,8 @@ struct MemoryDetailView: View {
         switch item.memory.kind {
         case .audio:
             AudioMemoryPlayerView(url: item.originalURL)
+        case .video:
+            LocalVideoPlayerView(url: item.originalURL)
         case .link:
             if let value = try? String(contentsOf: item.originalURL, encoding: .utf8),
                let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -531,6 +533,7 @@ private struct MemoryEditSheet: View {
     private var editorTitle: String {
         switch item.memory.kind {
         case .image: "Edit Photo"
+        case .video: "Edit Video"
         case .text: "Edit Note"
         case .audio: "Edit Recording"
         case .link: "Edit Link"
@@ -657,6 +660,7 @@ private extension MemoryKind {
         switch self {
         case .audio: "Recording"
         case .image: "Photo"
+        case .video: "Video"
         case .link: "Link"
         case .pdf: "PDF"
         case .text: "Note"
@@ -667,6 +671,7 @@ private extension MemoryKind {
         switch self {
         case .audio: "Voice recording"
         case .image: "Photo"
+        case .video: "Video"
         case .link: "Link"
         case .pdf: "PDF document"
         case .text: "Note"

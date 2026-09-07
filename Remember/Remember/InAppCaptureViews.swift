@@ -8,33 +8,93 @@ struct CaptureMenuButton: View {
     let onSelect: (CaptureAction) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var dialPosition = CGFloat.zero
-    @GestureState private var dialDragProgress = CGFloat.zero
+    @State private var lastDragLocation: CGPoint?
+    @State private var motion = CaptureDialMomentum()
+    @State private var coaster = CaptureDialCoaster()
+    @GestureState private var isDragging = false
 
     private let dialRadius = CGFloat(135)
     private let visibleActionCount = 4
+    private let menuSide = CGFloat(245)
+    private let hubSize = CGFloat(56)
+    private let trailingInset = CGFloat(18)
+    private let bottomInset = CGFloat(28)
+
+    private var dialCenter: CGPoint {
+        CGPoint(x: menuSide - trailingInset - hubSize / 2, y: menuSide - bottomInset - hubSize / 2)
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             if isExpanded {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Capture dial")
-                    .accessibilityValue("Four capture types visible")
-                    .accessibilityHint("Swipe up or down to rotate through capture types")
-                    .accessibilityAdjustableAction { direction in
-                        switch direction {
-                        case .increment:
-                            rotateDial(by: 1)
-                        case .decrement:
-                            rotateDial(by: -1)
-                        @unknown default:
-                            break
-                        }
-                    }
-                    .transition(.opacity)
+                dialActions
             }
+
+            Button {
+                setExpanded(!isExpanded)
+            } label: {
+                Image(systemName: isExpanded ? "xmark" : "plus")
+                    .font(.system(size: 23, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: hubSize, height: hubSize)
+                    .contentTransition(.symbolEffect(.replace))
+                    .glassEffect(.regular.tint(Color.accentColor).interactive(), in: .circle)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            // The hub is separate from the rotating actions and their gesture recognizer.
+            .zIndex(10)
+            .frame(width: hubSize, height: hubSize)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityActivationPoint(.center)
+            .accessibilityAction { setExpanded(!isExpanded) }
+            .accessibilityIdentifier("capture-menu-toggle")
+            .accessibilityLabel(isExpanded ? "Close add menu" : "Add a memory")
+            .accessibilityHint(
+                isExpanded
+                    ? "Closes the capture dial. Swipe over the dial to rotate capture types."
+                    : "Shows capture types"
+            )
+            .padding(.trailing, trailingInset)
+            .padding(.bottom, bottomInset)
+        }
+        .frame(width: menuSide, height: menuSide, alignment: .bottomTrailing)
+        .coordinateSpace(name: "capture-dial")
+        .accessibilityAction(.escape) { setExpanded(false) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isExpanded)
+        .onChange(of: isDragging) { _, dragging in
+            if !dragging { lastDragLocation = nil }
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            if !expanded { stopCoasting() }
+        }
+        .onChange(of: reduceMotion) { _, reduced in
+            if reduced { stopCoasting() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { stopCoasting() }
+        }
+        .onDisappear { stopCoasting(); isExpanded = false }
+    }
+
+    private var dialActions: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Color.clear
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Capture dial")
+                .accessibilityValue("Four capture types visible")
+                .accessibilityHint("Swipe up or down to rotate through capture types")
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: rotateDial(by: 1)
+                    case .decrement: rotateDial(by: -1)
+                    @unknown default: break
+                    }
+                }
 
             ForEach(Array(CaptureAction.allCases.enumerated()), id: \.element.id) { index, action in
                 let relativePosition = relativePosition(for: index)
@@ -46,50 +106,33 @@ struct CaptureMenuButton: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(action.title)
-                .accessibilityHidden(!isExpanded || visibility < 0.5)
-                .allowsHitTesting(isExpanded && visibility >= 0.72)
-                .offset(isExpanded ? dialOffset(for: relativePosition) : .zero)
-                .scaleEffect(isExpanded ? 0.78 + (0.12 * visibility) : 0.35)
-                .opacity(isExpanded ? visibility : 0)
-                .animation(actionAnimation(for: min(index, visibleActionCount - 1)), value: isExpanded)
+                .accessibilityHidden(visibility < 0.5)
+                .allowsHitTesting(visibility >= 0.72)
+                .offset(dialOffset(for: relativePosition))
+                .opacity(visibility)
+                .transition(.scale(scale: 0.7).combined(with: .opacity))
                 .zIndex(Double(visibility))
-                .padding(.trailing, 18)
-                .padding(.bottom, 12)
+                .padding(.trailing, trailingInset)
+                .padding(.bottom, bottomInset)
             }
-
-            Button {
-                setExpanded(!isExpanded)
-            } label: {
-                Image(systemName: isExpanded ? "xmark" : "plus")
-                    .font(.system(size: 23, weight: .semibold))
-                    .frame(width: 26, height: 26)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .controlSize(.large)
-            .tint(Color.accentColor)
-            .padding(.trailing, 18)
-            .padding(.bottom, 12)
-            .accessibilityLabel(isExpanded ? "Close add menu" : "Add a memory")
-            .accessibilityHint(
-                isExpanded
-                    ? "Closes the capture dial. Swipe over the dial to rotate capture types."
-                    : "Shows capture types"
-            )
         }
-        .frame(width: 225, height: 225, alignment: .bottomTrailing)
-        .simultaneousGesture(dialDragGesture, including: isExpanded ? .all : .none)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isExpanded)
-        .onDisappear { isExpanded = false }
+        .frame(width: menuSide, height: menuSide)
+        .highPriorityGesture(dialDragGesture)
+        .transition(.opacity)
     }
 
     private func select(_ action: CaptureAction) {
+        // Dismissing buttons can remain in the transition hierarchy. Ignore any
+        // trailing action delivered after the hub closed the menu or during rotation.
+        guard isExpanded, !isDragging else { return }
         setExpanded(false)
         onSelect(action)
     }
 
     private func setExpanded(_ expanded: Bool) {
+        stopCoasting()
+        motion = CaptureDialMomentum()
+        lastDragLocation = nil
         if expanded { dialPosition = 0 }
         if reduceMotion {
             isExpanded = expanded
@@ -100,35 +143,45 @@ struct CaptureMenuButton: View {
         }
     }
 
-    private func actionAnimation(for index: Int) -> Animation? {
-        guard !reduceMotion else { return nil }
-        let order = isExpanded ? index : visibleActionCount - index - 1
-        return .spring(response: 0.36, dampingFraction: 0.76)
-            .delay(Double(order) * 0.035)
-    }
-
     private var dialDragGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .updating($dialDragProgress) { value, progress, transaction in
+        DragGesture(minimumDistance: 8, coordinateSpace: .named("capture-dial"))
+            .updating($isDragging) { _, state, transaction in
                 transaction.animation = nil
-                progress = dialProgress(for: value.translation)
+                state = true
+            }
+            .onChanged { value in
+                stopCoasting()
+                if lastDragLocation == nil { motion = CaptureDialMomentum() }
+                dialPosition += CaptureDialDrag.progress(
+                    from: lastDragLocation ?? value.startLocation,
+                    to: value.location,
+                    center: dialCenter
+                )
+                lastDragLocation = value.location
+                motion.record(position: dialPosition, time: value.time.timeIntervalSinceReferenceDate)
             }
             .onEnded { value in
-                let currentProgress = dialProgress(for: value.translation)
-                let projectedProgress = dialProgress(for: value.predictedEndTranslation)
-                let momentum = min(0.75, max(-0.75, projectedProgress - currentProgress))
-                let targetPosition = dialPosition + currentProgress + momentum
-                if reduceMotion {
-                    dialPosition = targetPosition
-                } else {
-                    withAnimation(.smooth(duration: 0.28)) {
-                        dialPosition = targetPosition
-                    }
-                }
+                let velocity = motion.releaseVelocity(at: value.time.timeIntervalSinceReferenceDate)
+                dialPosition = dialPosition.truncatingRemainder(dividingBy: CGFloat(CaptureAction.allCases.count))
+                lastDragLocation = nil
+                startCoasting(velocity: velocity)
             }
+    }
+
+    private func stopCoasting() {
+        coaster.stop()
+    }
+
+    private func startCoasting(velocity: CGFloat) {
+        stopCoasting()
+        guard !reduceMotion, isExpanded, abs(velocity) > CaptureDialMomentum.stopSpeed else { return }
+        coaster.start(velocity: velocity) { distance in
+            dialPosition = (dialPosition + distance).truncatingRemainder(dividingBy: CGFloat(CaptureAction.allCases.count))
+        }
     }
 
     private func rotateDial(by step: Int) {
+        stopCoasting()
         let newPosition = dialPosition + CGFloat(step)
         if reduceMotion {
             dialPosition = newPosition
@@ -140,20 +193,9 @@ struct CaptureMenuButton: View {
         }
     }
 
-    private var displayedDialPosition: CGFloat {
-        dialPosition + dialDragProgress
-    }
-
-    private func dialProgress(for translation: CGSize) -> CGFloat {
-        let dominantDistance = abs(translation.width) > abs(translation.height)
-            ? -translation.width
-            : -translation.height
-        return dominantDistance / 76
-    }
-
     private func relativePosition(for actionIndex: Int) -> CGFloat {
         let actionCount = CGFloat(CaptureAction.allCases.count)
-        var position = CGFloat(actionIndex) - displayedDialPosition
+        var position = CGFloat(actionIndex) - dialPosition
         while position < -1 { position += actionCount }
         while position > CGFloat(visibleActionCount) { position -= actionCount }
         return position
@@ -174,25 +216,36 @@ struct CaptureMenuButton: View {
     }
 
     private func fanLabel(for action: CaptureAction) -> some View {
-        VStack(spacing: 5) {
-            Image(systemName: action.systemImage)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(.regularMaterial, in: Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.2), radius: 7, y: 3)
+        Image(systemName: action.systemImage)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 48, height: 48)
+            .glassEffect(.regular, in: .circle)
+            .frame(width: hubSize, height: hubSize)
+            .contentShape(Circle())
+            .overlay(alignment: .bottom) {
+                Text(action.compactTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize()
+                    .offset(y: 18)
+            }
+    }
+}
 
-            Text(action.compactTitle)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .fixedSize()
-        }
-        .frame(width: 52)
+nonisolated enum CaptureDialDrag {
+    static func progress(from start: CGPoint, to end: CGPoint, center: CGPoint) -> CGFloat {
+        let a = CGPoint(x: start.x - center.x, y: start.y - center.y)
+        let b = CGPoint(x: end.x - center.x, y: end.y - center.y)
+        // Rotation is undefined at the hub. Ignore crossings instead of jumping half a turn.
+        guard hypot(a.x, a.y) >= 24, hypot(b.x, b.y) >= 24 else { return 0 }
+        let dx = b.x - a.x, dy = b.y - a.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return 0 }
+        let nearest = min(1, max(0, -(a.x * dx + a.y * dy) / lengthSquared))
+        guard hypot(a.x + nearest * dx, a.y + nearest * dy) >= 24 else { return 0 }
+        let delta = atan2(b.y, b.x) - atan2(a.y, a.x)
+        return atan2(sin(delta), cos(delta)) / (.pi / 6)
     }
 }
 
@@ -277,29 +330,43 @@ struct NewNoteCaptureView: View {
 
 struct ImageCaptureConfirmationView: View {
     let imageURL: URL
+    var kind: MemoryKind = .image
     let viewModel: LibraryViewModel
 
     @Environment(\.dismiss) private var dismiss
     @State private var context = ""
     @State private var isSaving = false
-    @State private var didSave = false
+    @FocusState private var isCaptionFocused: Bool
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    LocalImageView(url: imageURL, maximumPixelSize: 1_600, contentMode: .fit)
+                    Group {
+                        if kind == .video {
+                            LocalVideoPlayerView(url: imageURL)
+                        } else {
+                            LocalImageView(url: imageURL, maximumPixelSize: 1_600, contentMode: .fit)
+                        }
+                    }
                         .frame(maxWidth: .infinity)
                         .frame(height: 260)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .accessibilityLabel("Selected photo preview")
                 }
                 Section("Caption") {
                     TextField("What should Remember know about this?", text: $context, axis: .vertical)
                         .lineLimit(2...5)
+                        .focused($isCaptionFocused)
+                }
+                if kind == .video {
+                    Text("The original video stays on this device. Only your caption is indexed; video scenes and speech are not analyzed.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                if let error = viewModel.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
             }
-            .navigationTitle("Add Photo")
+            .navigationTitle(kind == .video ? "Add Video" : "Add Photo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -307,26 +374,27 @@ struct ImageCaptureConfirmationView: View {
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button(isSaving ? "Saving…" : "Save") { save() }
                         .disabled(isSaving)
                 }
             }
         }
-        .presentationDetents([.height(500)])
+        .presentationDetents([.large])
         .interactiveDismissDisabled(isSaving)
-        .onDisappear {
-            if !didSave { try? FileManager.default.removeItem(at: imageURL) }
-        }
     }
 
     private func save() {
+        isCaptionFocused = false
         Task {
             isSaving = true
-            let saved = await viewModel.saveImage(from: imageURL, context: context)
+            let saved: Bool
+            if kind == .video {
+                saved = await viewModel.saveVideo(from: imageURL, context: context)
+            } else {
+                saved = await viewModel.saveImage(from: imageURL, context: context)
+            }
             isSaving = false
             if saved {
-                didSave = true
-                try? FileManager.default.removeItem(at: imageURL)
                 dismiss()
             }
         }

@@ -34,6 +34,10 @@ actor LocalCaptureAnalyzer: MemoryAnalyzing {
     }
 
     func analyzeExtracted(memory: MemoryItem, originalURL: URL, supportingText: String?, extracted: ExtractedMemoryContent) async throws -> MemoryAnalysisResult {
+        if memory.kind == .video {
+            // Video import/playback is local-only; captions are the only searchable evidence.
+            return DeterministicMemoryAnalyzer.result(memory: memory, extracted: extracted)
+        }
         if cloudEnabled() {
             return try await cloudAnalyzer.analyze(
                 memory: memory, originalURL: originalURL, supportingText: supportingText)

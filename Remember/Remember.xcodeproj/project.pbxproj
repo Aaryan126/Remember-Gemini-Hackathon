@@ -524,6 +524,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Remember/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Remember uses the camera when you choose Take Photo to capture a photo for your private memory library.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Remember records only when you tap Record so it can save a private voice memory on this iPhone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Remember transcribes voice memories using an installed on-device speech model; the transcript then stays in your local library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -560,6 +561,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Remember/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Remember uses the camera when you choose Take Photo to capture a photo for your private memory library.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Remember records only when you tap Record so it can save a private voice memory on this iPhone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Remember transcribes voice memories using an installed on-device speech model; the transcript then stays in your local library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

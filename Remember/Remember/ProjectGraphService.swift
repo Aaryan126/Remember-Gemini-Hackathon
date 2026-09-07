@@ -69,7 +69,7 @@ actor ProjectGraphService {
                 evidence.supports(topicEvidence(for: $0))
             }
         }.map(\.id))
-        if let embedding, !snapshot.pinned.contains(memory.id) {
+        if let embedding, !snapshot.preservesOrganization(for: memory.id) {
             let candidates = snapshot.activeClusters.compactMap { cluster -> (UUID, Double, Double)? in
                 guard !oldIDs.contains(cluster.id) else { return nil }
                 let members = snapshot.members(of: cluster.id)
@@ -115,7 +115,7 @@ actor ProjectGraphService {
                     payload.rationale = "Reasoning was unavailable; retained the existing thread for review."
                 }
             }
-        } else if snapshot.pinned.contains(memory.id) {
+        } else if snapshot.preservesOrganization(for: memory.id) {
             payload.rationale = "Preserved your explicit topic assignment."
         }
         payload.assignments = [memory.id.uuidString: selected]
@@ -173,7 +173,7 @@ actor ProjectGraphService {
                 guard !snapshot.blockedPairs.contains(ProvenanceSnapshot.pair(first.id, second.id)) else { continue }
                 let rightMembers = snapshot.members(of: second.id)
                 let allMembers = leftMembers + rightMembers
-                guard allMembers.allSatisfy({ !snapshot.pinned.contains($0.id) }) else { continue }
+                guard allMembers.allSatisfy({ !snapshot.preservesOrganization(for: $0.id) }) else { continue }
                 let right = rightMembers.compactMap { vectors[$0.id] }
                 guard right.count == rightMembers.count, right.allSatisfy({ $0.space == space }),
                       ProjectMath.coherent(left), ProjectMath.coherent(right),

@@ -1,17 +1,24 @@
 # Remember
 
-Remember is an iPhone memory vault for notes, images, links, PDFs, and voice recordings. **Memories** handles capture and retrieval; **Project** shows the provenance timeline, topic graph, and each thread’s River; **Settings** includes optional cloud assistance and the archive.
+Remember is an iPhone memory vault for notes, images, videos, links, PDFs, and voice recordings. **Memories** handles capture and retrieval; **Project** shows the provenance timeline, topic graph, and each thread’s River; **Settings** includes optional cloud assistance and the archive.
 
 ## Current product surface
 
 - Capture content in the app or through the Share Extension.
 - Keep original files and metadata in the local vault.
+- Import photos or videos through the system Photos picker, preview, add a caption, and save. Video imports also work from Files. Native inline video controls support playback and scrubbing; playback is user-initiated and pauses on leaving/backgrounding. Videos are stored locally; only captions are indexed, not scenes or video speech. Photos-picker iCloud downloads require connectivity.
 - Extract text with Apple Vision and transcribe speech with Apple Speech on-device.
 - Enrich captures locally with Apple extraction and Foundation Models where available; organize topics using contextual and sentence embeddings plus shared source evidence.
 - Opt into OpenAI capture enrichment and topic reasoning, or explicitly use AI search and grounded answers.
 - Verify generated answer quotes against retrieved source text before displaying them.
 - Browse, search, revise, organize, archive, and restore saved memories without erasing their history.
 - Switch Project between Timeline and Graph, drill into a topic’s River, inspect placement evidence, compare past state, and correct organization. High-confidence merges are automatic; splits require acceptance.
+- The memory map uses title-only circles sized by each thread’s memory count, with shared-source/tag connections. Tapping a circle opens its river directly, with photos, videos, voice players, and notes in chronological capture/revision entries—not a separate Sources section. Media taps open Memory, and Back returns straight to the river. Pan/pinch and Fit map controls support exploration. Full thread titles remain available in the list; accessibility text sizes use that list instead of shrinking map labels.
+- Thread history’s vertical ellipsis menu offers Edit thread and Delete thread. Deleting archives only the thread, preserving its memories and other memberships; restore it from Settings → Archive.
+- The River has one continuous left-hand branch running beside the full height of its entries. Media and text share a column to its right; junctions mark each event without breaking the main line.
+- Opening the capture dial blurs and de-emphasizes the library. Rotate directly around its centre; a flick coasts in the same direction and gradually slows. Dragging again, selecting a capture, or dismissing the menu cancels momentum. Reduce Motion disables coasting, and Reduce Transparency is respected. The add button appears only at the library root, not on memory details.
+
+Dial momentum uses elapsed display-link time and opts into faster ProMotion refresh rates while animating; iOS still controls the actual refresh rate according to device and power conditions. See [Apple’s ProMotion guidance](https://developer.apple.com/documentation/quartzcore/optimizing-iphone-and-ipad-apps-to-support-promotion-displays).
 
 No third-party model weights are bundled. Apple contextual embedding assets may download on demand; capture and singleton topics remain available while models are unavailable.
 
@@ -72,3 +79,5 @@ xcodebuild -project Remember/Remember.xcodeproj -scheme Remember \
 ```
 
 API-backed behavior requires a valid key and access to the configured `gpt-5.5` model. Deterministic fallbacks keep capture and source-only retrieval useful when the proxy is unavailable.
+
+For UI checks on a personal iPhone, select only `testDialFollowsDragInBothDirections`, `testDialFlingCanBeDismissedAndReopened`, `testCaptureButtonIsHiddenOnMemoryDetail`, `testRadialCaptureMenuExposesEveryCaptureAction`, and `testExistingLibraryGraphNavigationWithoutCaptures` in `RememberUITests`. The detail and graph checks require existing memories/threads, and the graph check restores the previous Timeline/Graph selection. These checks do not create or archive captures; other UI tests seed sample memories and belong on a simulator or disposable test device. Keep the phone unlocked and untouched during automation.

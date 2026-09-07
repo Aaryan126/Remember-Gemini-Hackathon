@@ -76,6 +76,20 @@ nonisolated struct ProvenanceEvent: Codable, FetchableRecord, PersistableRecord,
         guard result.version == 1 else { throw ProvenanceError.unsupportedVersion }
         return result
     }
+
+    /// Display originals only at their capture/revision, never again for generated metadata.
+    var riverSource: MemoryItem? {
+        guard [.capture, .imported, .revision].contains(kind) else { return nil }
+        return try? payload().memory
+    }
+
+    /// Refresh metadata only for the same original; old revisions must remain historical.
+    func riverMemory(in snapshot: ProvenanceSnapshot) -> MemoryItem? {
+        guard let original = riverSource else { return nil }
+        guard let current = snapshot.memories[original.id],
+              current.originalFilename == original.originalFilename else { return original }
+        return current
+    }
 }
 
 nonisolated struct ProvenanceCluster: Identifiable, Sendable {
@@ -91,6 +105,7 @@ nonisolated struct ProvenanceSnapshot: Sendable {
     var memberships: [UUID: Set<UUID>] = [:]
     var pinned: Set<UUID> = []
     var blockedPairs: Set<String> = []
+    var archivedClusterIDs: Set<UUID> = []
     var resolved: Set<UUID> = []
     var events: [ProvenanceEvent] = []
 
@@ -131,13 +146,27 @@ nonisolated struct ProvenanceSnapshot: Sendable {
             if event.kind == .rename, let id = payload.clusterID, let title = payload.title {
                 snapshot.clusters[id]?.title = title
             }
+            // Thread archival hides the grouping without archiving its shared memories.
+            if event.memoryID == nil, let id = payload.clusterID {
+                if event.kind == .archive { snapshot.archivedClusterIDs.insert(id) }
+                if event.kind == .restore { snapshot.archivedClusterIDs.remove(id) }
+            }
         }
         return snapshot
     }
 
     var activeClusters: [ProvenanceCluster] {
-        clusters.values.filter { !$0.retired && !members(of: $0.id).isEmpty }
+        clusters.values.filter { !$0.retired && !archivedClusterIDs.contains($0.id) && !members(of: $0.id).isEmpty }
             .sorted { $0.title == $1.title ? $0.id.uuidString < $1.id.uuidString : $0.title < $1.title }
+    }
+
+    var archivedClusters: [ProvenanceCluster] {
+        clusters.values.filter { archivedClusterIDs.contains($0.id) }
+            .sorted { $0.title == $1.title ? $0.id.uuidString < $1.id.uuidString : $0.title < $1.title }
+    }
+
+    func preservesOrganization(for memoryID: UUID) -> Bool {
+        pinned.contains(memoryID) || !memberships[memoryID, default: []].isDisjoint(with: archivedClusterIDs)
     }
 
     func members(of clusterID: UUID, includeArchived: Bool = false) -> [MemoryItem] {

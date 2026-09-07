@@ -79,6 +79,7 @@ nonisolated enum MemoryChunker {
         switch kind {
         case .audio: "Transcript"
         case .image: "Image text"
+        case .video: "Video caption"
         case .link: "Saved link"
         case .pdf: "Imported document"
         case .text: "Saved note"
@@ -90,7 +91,7 @@ nonisolated enum MemoryChunker {
         case .audio: .transcript
         case .image: .visionOCR
         case .pdf: .pdfText
-        case .link, .text: .plainText
+        case .link, .text, .video: .plainText
         }
     }
 }

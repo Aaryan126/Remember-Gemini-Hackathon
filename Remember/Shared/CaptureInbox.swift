@@ -6,6 +6,7 @@ nonisolated enum RememberAppGroup {
 
 nonisolated enum CaptureKind: String, Codable, Sendable {
     case image
+    case video
     case link
     case pdf
     case text
@@ -83,6 +84,11 @@ nonisolated struct CaptureInbox: Sendable {
     @discardableResult
     func saveImage(from sourceURL: URL, caption: String?) throws -> CapturedItemRecord {
         try saveFile(from: sourceURL, kind: .image, caption: caption)
+    }
+
+    @discardableResult
+    func saveVideo(from sourceURL: URL, caption: String?) throws -> CapturedItemRecord {
+        try saveFile(from: sourceURL, kind: .video, caption: caption)
     }
 
     @discardableResult

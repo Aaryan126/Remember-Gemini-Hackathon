@@ -4,6 +4,59 @@ import Testing
 @testable import Remember
 
 struct ProvenanceTests {
+    @Test func archivingThreadPreservesMemoriesSharedMembershipsAndHistory() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try MemoryStore(databaseURL: root.appendingPathComponent("db.sqlite"))
+        let first = memory("Thread one"), second = memory("Thread two")
+        try await store.insertIfNeeded(first)
+        try await store.insertIfNeeded(second)
+        try await store.assignProjectMemory(id: first.id, clusters: [first.id, second.id])
+        let before = try await store.provenanceEvents()
+        try await store.setProjectThreadArchived(id: first.id, archived: true)
+        try await store.setProjectThreadArchived(id: first.id, archived: true)
+        let archived = try await store.provenanceEvents()
+        #expect(archived.count == before.count + 1)
+        let state = try ProvenanceSnapshot.replay(archived)
+        #expect(state.activeClusters.map(\.id) == [second.id])
+        #expect(state.archivedClusters.map(\.id) == [first.id])
+        #expect(state.memories[first.id]?.isArchived == false)
+        #expect(state.members(of: second.id).count == 2)
+        #expect(state.memberships[first.id] == [first.id, second.id])
+        #expect(state.preservesOrganization(for: first.id))
+        #expect(try await store.fetchAll().count == 2)
+        #expect(try ProvenanceSnapshot.replay(before).activeClusters.count == 2)
+        try await store.setProjectThreadArchived(id: first.id, archived: false)
+        try await store.setProjectThreadArchived(id: first.id, archived: false)
+        let restored = try ProvenanceSnapshot.replay(await store.provenanceEvents())
+        #expect(restored.activeClusters.count == 2)
+        #expect(restored.archivedClusters.isEmpty)
+        #expect(restored.memories[first.id]?.originalFilename == first.originalFilename)
+        #expect(restored.events.count == archived.count + 1)
+    }
+
+    @Test func archivedThreadDoesNotReappearDuringAutomaticOrganization() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try MemoryStore(databaseURL: root.appendingPathComponent("db.sqlite"))
+        let item = memory("Calculus derivatives")
+        try await store.insertIfNeeded(item)
+        try await store.markIndexed(id: item.id, analysis: MemoryAnalysisResult(title: item.displayTitle,
+            summary: "Calculus", tags: [], extractedText: "Calculus derivatives", modelVersion: "fixture"))
+        try await store.setProjectThreadArchived(id: item.id, archived: true)
+        let graph = ProjectGraphService(store: store, embeddings: FixtureEmbedding(vector: [1, 0]), reasoner: NoReasoning())
+        try await graph.synchronize()
+        let state = try ProvenanceSnapshot.replay(await store.provenanceEvents())
+        #expect(state.activeClusters.isEmpty)
+        #expect(state.archivedClusters.map(\.id) == [item.id])
+        #expect(!state.pinned.contains(item.id))
+        try await store.setProjectThreadArchived(id: item.id, archived: false)
+        let restored = try ProvenanceSnapshot.replay(await store.provenanceEvents())
+        #expect(restored.activeClusters.count == 1)
+        #expect(!restored.preservesOrganization(for: item.id))
+        await #expect(throws: ProvenanceError.self) { try await store.setProjectThreadArchived(id: UUID(), archived: true) }
+    }
+
     @Test func liveConsumersShareTheObservableStore() throws {
         #expect(try MemoryStore.live() === MemoryStore.live())
     }

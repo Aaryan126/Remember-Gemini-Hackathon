@@ -36,6 +36,9 @@ struct ProjectView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
+            .onChange(of: model.snapshot.activeClusters.map(\.id)) { _, ids in
+                if let topic, !ids.contains(topic) { self.topic = nil }
+            }
         }
     }
 
@@ -54,7 +57,7 @@ struct ProjectView: View {
                 }.scrollIndicators(.hidden)
                 Picker("Source", selection: $kind) {
                     Text("All sources").tag(nil as MemoryKind?)
-                    ForEach([MemoryKind.text, .image, .audio, .pdf, .link], id: \.self) { Text($0.rawValue.capitalized).tag(Optional($0)) }
+                    ForEach([MemoryKind.text, .image, .video, .audio, .pdf, .link], id: \.self) { Text($0.rawValue.capitalized).tag(Optional($0)) }
                 }
                 Picker("Date", selection: $range) { ForEach(MemoryDateRange.allCases) { Text($0.label).tag($0) } }
                 Picker("Topic", selection: $topic) {

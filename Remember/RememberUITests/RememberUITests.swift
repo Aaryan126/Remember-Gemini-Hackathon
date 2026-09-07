@@ -22,6 +22,73 @@ final class RememberUITests: XCTestCase {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
+    /// Simulator only: seed Photos with the documented synthetic movie before running.
+    @MainActor
+    func testPhotosVideoImportAndInlineRiverPlayback() throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Imports a synthetic video; never run on a personal phone.")
+        #else
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["Add a memory"].tap()
+        app.buttons["Choose Photo or Video"].tap()
+        let video = app.images.matching(NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "PXGGridLayout-Info", "Video,")).firstMatch
+        XCTAssertTrue(video.waitForExistence(timeout: 8), "Seed the simulator Photos library with the synthetic movie.")
+        // Photos exposes thumbnails as images with no activation point; tap the resolved frame.
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.navigationBars["Add Video"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["Play video"].exists)
+        let title = "River movie \(UUID().uuidString.prefix(6))"
+        let caption = app.textFields["What should Remember know about this?"]
+        // A multiline SwiftUI field is exposed as a text view on some OS versions.
+        let input = caption.exists ? caption : app.textViews["What should Remember know about this?"]
+        input.tap()
+        input.typeText(title)
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.navigationBars["Add Video"].waitForNonExistence(timeout: 15), "Saving the selected video must complete.")
+        XCTAssertTrue(app.tabBars.buttons["Project"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Project"].tap()
+        let picker = app.segmentedControls["Project view"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.buttons["Timeline"].tap()
+        let topic = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "project-topic-", title)).firstMatch
+        XCTAssertTrue(topic.waitForExistence(timeout: 10))
+        topic.tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Sources"].exists)
+        let play = app.buttons["Play video"].firstMatch
+        for _ in 0..<6 where !play.isHittable { app.swipeUp() }
+        XCTAssertTrue(play.isHittable)
+        let before = XCTAttachment(screenshot: app.screenshot())
+        before.name = "Video embedded in chronological river"
+        before.lifetime = .keepAlways
+        add(before)
+        play.tap()
+        let player = app.otherElements.matching(NSPredicate(format: "label == %@", "Saved video player")).firstMatch
+        XCTAssertTrue(player.waitForExistence(timeout: 5))
+        player.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let playPause = app.buttons["Play/Pause"]
+        XCTAssertTrue(playPause.waitForExistence(timeout: 5))
+        let position = app.sliders.matching(NSPredicate(format: "identifier == %@", "Current position")).firstMatch
+        XCTAssertTrue(position.exists)
+        let initialPosition = position.value as? String
+        XCTAssertNotNil(initialPosition)
+        if playPause.label == "Play" { playPause.tap() }
+        let advances = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard position.exists, let value = position.value as? String else { return false }
+            return value != initialPosition
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [advances], timeout: 3), .completed)
+        XCTAssertTrue(app.navigationBars["Thread history"].exists, "Playback must stay in the river.")
+        let playing = XCTAttachment(screenshot: app.screenshot())
+        playing.name = "Native inline video playback"
+        playing.lifetime = .keepAlways
+        add(playing)
+        if playPause.exists && playPause.label == "Pause" { playPause.tap() }
+        app.navigationBars["Thread history"].buttons.element(boundBy: 0).tap()
+        #endif
+    }
+
     @MainActor
     func testRadialCaptureMenuExposesEveryCaptureAction() throws {
         let app = XCUIApplication()
@@ -34,7 +101,7 @@ final class RememberUITests: XCTestCase {
         XCTAssertGreaterThan(addMemory.frame.midY, windowFrame.midY)
         addMemory.tap()
 
-        let actionNames = ["New Note", "Take Photo", "Choose Photo", "Import File"]
+        let actionNames = ["New Note", "Take Photo", "Choose Photo or Video", "Import File"]
         let actionButtons = actionNames.map { app.buttons[$0] }
         for (action, button) in zip(actionNames, actionButtons) {
             XCTAssertTrue(button.waitForExistence(timeout: 2), "Missing radial action: \(action)")
@@ -59,8 +126,322 @@ final class RememberUITests: XCTestCase {
 
         let captureDial = app.otherElements["Capture dial"]
         XCTAssertTrue(captureDial.exists)
-        app.buttons["Choose Photo"].swipeUp()
+        let dialImage = XCTAttachment(screenshot: app.screenshot())
+        dialImage.name = "Capture dial background separation"
+        dialImage.lifetime = .keepAlways
+        add(dialImage)
+        let photo = app.buttons["Choose Photo or Video"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        photo.press(forDuration: 0.1, thenDragTo: photo.withOffset(CGVector(dx: 20, dy: -75)), withVelocity: .slow, thenHoldForDuration: 0.2)
         XCTAssertTrue(app.buttons["Record Voice"].waitForExistence(timeout: 2))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)).tap()
+        XCTAssertTrue(app.buttons["Close add menu"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Add a memory"].exists)
+    }
+
+    @MainActor
+    func testDialFollowsDragInBothDirections() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["Add a memory"].tap()
+        let note = app.buttons["New Note"]
+        XCTAssertTrue(note.waitForExistence(timeout: 3))
+        let original = note.frame
+        let start = note.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = start.withOffset(CGVector(dx: -45, dy: 8))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        let draggedImage = XCTAttachment(screenshot: app.screenshot())
+        draggedImage.name = "Dial after leftward drag"
+        draggedImage.lifetime = .keepAlways
+        add(draggedImage)
+        XCTAssertLessThan(note.frame.midX, original.midX - 20, "The top action must follow a leftward drag")
+        let moved = note.frame
+        let reverse = note.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        reverse.press(forDuration: 0.1, thenDragTo: reverse.withOffset(CGVector(dx: 35, dy: -5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertGreaterThan(note.frame.midX, moved.midX + 15, "Reversing the drag must move the action back right")
+        app.buttons["Close add menu"].tap()
+        XCTAssertTrue(app.buttons["Add a memory"].exists)
+        XCTAssertTrue(app.buttons["New Note"].waitForNonExistence(timeout: 3))
+        XCTAssertFalse(
+            XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch.exists,
+            "Closing the dial must not request device permissions"
+        )
+        app.tabBars.buttons["Project"].tap()
+        XCTAssertTrue(app.segmentedControls["Project view"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Memories"].tap()
+    }
+
+    @MainActor
+    func testMemoryMapSelectionZoomAndSourceNavigation() throws {
+        try checkMemoryMap(appearance: "light")
+    }
+
+    @MainActor
+    func testDialFlingCanBeDismissedAndReopened() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["Add a memory"].tap()
+        let start = app.buttons["Choose Photo or Video"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 20, dy: -100)), withVelocity: .fast, thenHoldForDuration: 0)
+        app.buttons["Close add menu"].tap()
+        XCTAssertTrue(app.buttons["Add a memory"].waitForExistence(timeout: 3))
+        app.buttons["Add a memory"].tap()
+        for title in ["New Note", "Take Photo", "Choose Photo or Video", "Import File"] {
+            XCTAssertTrue(app.buttons[title].exists)
+        }
+        app.buttons["Close add menu"].tap()
+        app.tabBars.buttons["Project"].tap()
+        XCTAssertTrue(app.segmentedControls["Project view"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Memories"].tap()
+    }
+
+    /// Requires an existing capture; does not change it.
+    @MainActor
+    func testCaptureButtonIsHiddenOnMemoryDetail() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let memory = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "library-memory-")).firstMatch
+        XCTAssertTrue(memory.waitForExistence(timeout: 5))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in memory.isHittable }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        memory.tap()
+        XCTAssertTrue(app.buttons["Memory details"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Add a memory"].exists)
+        XCTAssertFalse(app.buttons["Close add menu"].exists)
+        let detail = XCTAttachment(screenshot: app.screenshot())
+        detail.name = "Memory detail without capture button"
+        detail.lifetime = .keepAlways
+        add(detail)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["Add a memory"].waitForExistence(timeout: 5))
+    }
+
+    /// Safe for a connected phone: does not seed, edit, archive, or restore memories.
+    @MainActor
+    func testExistingLibraryGraphNavigationWithoutCaptures() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["Project"].tap()
+        let picker = app.segmentedControls["Project view"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10))
+        let previousView = picker.buttons["Timeline"].isSelected ? "Timeline" : "Graph"
+        picker.buttons["Graph"].tap()
+        let nodes = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "graph-node-"))
+        let first = nodes.firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 20), "This check requires an existing thread")
+        let originalFrame = first.frame
+        XCTAssertEqual(originalFrame.width, originalFrame.height, accuracy: 2, "Map nodes should be circular.")
+        let overview = XCTAttachment(screenshot: app.screenshot())
+        overview.name = "Existing library memory map"
+        overview.lifetime = .keepAlways
+        add(overview)
+
+        app.buttons["Zoom in"].tap()
+        let enlarged = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            first.frame.width > originalFrame.width + 5
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [enlarged], timeout: 3), .completed)
+        app.buttons["Fit map"].tap()
+        let fitted = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(first.frame.width - originalFrame.width) < 2
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [fitted], timeout: 3), .completed)
+        let start = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 35, dy: 15)))
+        XCTAssertGreaterThan(first.frame.midX, originalFrame.midX + 15)
+        app.buttons["Fit map"].tap()
+        let expectsPhoto = first.value as? String == "Photos"
+        first.tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Thread preview"].exists)
+        XCTAssertFalse(app.staticTexts["Sources"].exists, "Media belongs in the chronological river, not a separate section.")
+        XCTAssertFalse(app.staticTexts["Details & provenance"].exists)
+        XCTAssertTrue(app.buttons["Thread options"].exists)
+        XCTAssertFalse(app.navigationBars["Thread history"].buttons["Rename"].exists)
+        if expectsPhoto {
+            let openPhoto = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "river-open-image-")).firstMatch
+            XCTAssertTrue(openPhoto.waitForExistence(timeout: 5), "Photos must be visible and tappable directly in the river")
+            XCTAssertGreaterThan(openPhoto.frame.height, 100)
+            let source = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "project-source-")).firstMatch
+            XCTAssertEqual(openPhoto.frame.minX, source.frame.minX, accuracy: 1,
+                           "Media and its header should share the content column to the right of the river.")
+            for _ in 0..<4 where !openPhoto.isHittable { app.swipeUp() }
+            openPhoto.tap()
+            XCTAssertTrue(app.navigationBars["Memory"].waitForExistence(timeout: 5))
+            app.navigationBars["Memory"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.navigationBars["Imported history"].exists)
+        }
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "Existing library inline river"
+        preview.lifetime = .keepAlways
+        add(preview)
+        if expectsPhoto {
+            app.swipeUp()
+            let continuousRiver = XCTAttachment(screenshot: app.screenshot())
+            continuousRiver.name = "Continuous river beside media and between entries"
+            continuousRiver.lifetime = .keepAlways
+            add(continuousRiver)
+        }
+        app.navigationBars["Thread history"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.buttons[previousView].tap()
+        app.tabBars.buttons["Memories"].tap()
+    }
+
+    @MainActor
+    func testThreadMenuEditDeleteRestoreAndDirectMemoryBack() throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Creates and archives a synthetic thread; simulator only.")
+        #else
+        let app = XCUIApplication()
+        app.launch()
+        let title = "Thread controls \(UUID().uuidString.prefix(6))"
+        app.buttons["Add a memory"].tap()
+        app.buttons["New Note"].tap()
+        app.textFields["Title"].tap()
+        app.textFields["Title"].typeText(title)
+        app.buttons["Save"].tap()
+        app.tabBars.buttons["Project"].tap()
+        let picker = app.segmentedControls["Project view"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.buttons["Timeline"].tap()
+        let topic = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "project-topic-", title)).firstMatch
+        XCTAssertTrue(topic.waitForExistence(timeout: 10))
+        topic.tap()
+        XCTAssertFalse(app.staticTexts["Details & provenance"].exists)
+        let source = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "project-source-")).firstMatch
+        source.tap()
+        XCTAssertTrue(app.navigationBars["Memory"].waitForExistence(timeout: 5))
+        app.navigationBars["Memory"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Imported history"].exists)
+        app.buttons["Thread options"].tap()
+        app.buttons["Edit thread"].tap()
+        let name = app.alerts.textFields["Topic name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        // Tapping the center places the caret inside the existing title.
+        name.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: title.count))
+        let renamed = "Renamed \(title)"
+        name.typeText(renamed)
+        XCTAssertEqual(name.value as? String, renamed)
+        app.alerts.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts[renamed].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Thread options"].tap()
+        app.buttons["Delete thread…"].tap()
+        app.buttons["Delete thread"].tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        app.tabBars.buttons["Memories"].tap()
+        XCTAssertTrue(app.buttons[title].firstMatch.waitForExistence(timeout: 5), "Deleting a thread must retain its memories.")
+        app.tabBars.buttons["Settings"].tap()
+        app.staticTexts["Archive"].firstMatch.tap()
+        let restore = app.buttons["Restore thread \(renamed)"]
+        XCTAssertTrue(restore.waitForExistence(timeout: 5))
+        restore.tap()
+        XCTAssertTrue(restore.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Project"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "project-topic-", renamed)).firstMatch.waitForExistence(timeout: 5))
+        #endif
+    }
+
+    @MainActor
+    func testMemoryMapDarkAppearance() throws {
+        try checkMemoryMap(appearance: "dark")
+    }
+
+    @MainActor
+    private func checkMemoryMap(appearance: String) throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-remember.appearance", appearance]
+        app.launch()
+        for title in ["Hackathon submission guidelines", "Judging criteria for the hackathon", "Application submission confirmation", "Building with Gemma", "Digital entrepreneurship class", "Ideas from today's voice memo"] {
+            app.tabBars.buttons["Memories"].tap()
+            if app.buttons[title].firstMatch.exists { continue }
+            app.buttons["Add a memory"].tap()
+            app.buttons["New Note"].tap()
+            let field = app.textFields["Title"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap()
+            field.typeText(title)
+            app.buttons["Save"].tap()
+            XCTAssertTrue(app.buttons["Add a memory"].waitForExistence(timeout: 5))
+        }
+        app.tabBars.buttons["Project"].tap()
+        app.segmentedControls["Project view"].buttons["Graph"].tap()
+        XCTAssertTrue(app.staticTexts["Your memory map"].waitForExistence(timeout: 5))
+        let nodes = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "graph-node-"))
+        let overview = XCTAttachment(screenshot: app.screenshot())
+        overview.name = "Memory map overview — \(appearance)"
+        overview.lifetime = .keepAlways
+        add(overview)
+        XCTAssertGreaterThanOrEqual(nodes.count, 6)
+        let first = nodes.element(boundBy: 0)
+        let originalFrame = first.frame
+        app.buttons["Zoom in"].tap()
+        XCTAssertGreaterThan(first.frame.width, originalFrame.width)
+        app.buttons["Fit map"].tap()
+        let fitted = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(first.frame.width - originalFrame.width) < 2
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [fitted], timeout: 3), .completed)
+        let panStart = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        panStart.press(forDuration: 0.1, thenDragTo: panStart.withOffset(CGVector(dx: 35, dy: 15)))
+        XCTAssertGreaterThan(first.frame.midX, originalFrame.midX + 15)
+        app.buttons["Fit map"].tap()
+        first.tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Thread preview"].exists)
+        let selected = XCTAttachment(screenshot: app.screenshot())
+        selected.name = "Memory map direct river — \(appearance)"
+        selected.lifetime = .keepAlways
+        add(selected)
+        app.navigationBars["Thread history"].buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["Memories"].tap()
+        app.buttons["Add a memory"].tap()
+        let dial = XCTAttachment(screenshot: app.screenshot())
+        dial.name = "Capture dial — \(appearance)"
+        dial.lifetime = .keepAlways
+        add(dial)
+        app.buttons["Close add menu"].tap()
+    }
+
+    @MainActor
+    func testMemoryMapAccessibilityTextSize() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let title = "Accessible memory map source"
+        if !app.buttons[title].firstMatch.exists {
+            app.buttons["Add a memory"].tap()
+            app.buttons["New Note"].tap()
+            let field = app.textFields["Title"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap()
+            field.typeText(title)
+            app.buttons["Save"].tap()
+            XCTAssertTrue(app.buttons["Add a memory"].waitForExistence(timeout: 5))
+        }
+        app.terminate()
+        app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        app.tabBars.buttons["Project"].tap()
+        app.segmentedControls["Project view"].buttons["Graph"].tap()
+        XCTAssertTrue(app.staticTexts["All threads"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Zoom in"].exists)
+        let threads = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "graph-thread-"))
+        XCTAssertGreaterThan(threads.count, 0)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Memory map accessibility text size"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        threads.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        let source = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "project-source-")).firstMatch
+        for _ in 0..<4 where !source.isHittable { app.swipeUp() }
+        XCTAssertTrue(source.exists)
+        let river = XCTAttachment(screenshot: app.screenshot())
+        river.name = "River first-line junction alignment at accessibility text size"
+        river.lifetime = .keepAlways
+        add(river)
     }
 
     @MainActor
@@ -105,7 +486,7 @@ final class RememberUITests: XCTestCase {
         addMemory.tap()
         XCTAssertTrue(app.buttons["New Note"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Take Photo"].exists)
-        XCTAssertTrue(app.buttons["Choose Photo"].exists)
+        XCTAssertTrue(app.buttons["Choose Photo or Video"].exists)
         XCTAssertTrue(app.buttons["Import File"].exists)
     }
 

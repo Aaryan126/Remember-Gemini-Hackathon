@@ -448,6 +448,7 @@ private extension MemoryKind {
         switch self {
         case .audio: "waveform"
         case .image: "photo"
+        case .video: "video"
         case .link: "link"
         case .pdf: "doc.richtext"
         case .text: "text.quote"
@@ -458,6 +459,7 @@ private extension MemoryKind {
         switch self {
         case .audio: .orange
         case .image: .green
+        case .video: .indigo
         case .link: .blue
         case .pdf: .red
         case .text: .purple

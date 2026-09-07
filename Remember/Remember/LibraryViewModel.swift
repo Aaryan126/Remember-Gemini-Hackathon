@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -336,8 +337,41 @@ final class LibraryViewModel {
         await saveCapture { try $0.saveImage(from: sourceURL, context: context) }
     }
 
+    func saveVideo(from sourceURL: URL, context: String?) async -> Bool {
+        errorMessage = nil
+        do {
+            try await LocalVideoAsset.validate(sourceURL)
+            let service = try captureServiceFactory()
+            // Large file copies must not block scrolling or the save progress indicator.
+            try await Task.detached(priority: .userInitiated) {
+                try service.saveVideo(from: sourceURL, context: context)
+            }.value
+            Task { await self.synchronize() }
+            return true
+        } catch {
+            errorMessage = Self.message(for: error)
+            return false
+        }
+    }
+
     func saveImportedFile(from sourceURL: URL) async -> Bool {
-        await saveCapture { try $0.saveImportedFile(from: sourceURL) }
+        errorMessage = nil
+        let didAccess = sourceURL.startAccessingSecurityScopedResource()
+        defer { if didAccess { sourceURL.stopAccessingSecurityScopedResource() } }
+        do {
+            if let type = UTType(filenameExtension: sourceURL.pathExtension), type.conforms(to: .movie) {
+                try await LocalVideoAsset.validate(sourceURL)
+            }
+            let service = try captureServiceFactory()
+            try await Task.detached(priority: .userInitiated) {
+                try service.saveImportedFile(from: sourceURL)
+            }.value
+            Task { await self.synchronize() }
+            return true
+        } catch {
+            errorMessage = Self.message(for: error)
+            return false
+        }
     }
 
     func createCollection(name: String) async -> Bool {
