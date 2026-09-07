@@ -74,6 +74,16 @@ final class LibraryViewModel {
         }
     }
 
+    func reloadLibraryProjection() async {
+        do {
+            let pipeline = try livePipeline()
+            items = try await pipeline.libraryItems()
+            collections = try await pipeline.collectionSummaries()
+            tagSummaries = try await pipeline.tagSummaries()
+            if searchRequest.isActive { await search() }
+        } catch { errorMessage = Self.message(for: error) }
+    }
+
     func retry(id: UUID) async {
         await performMutation { pipeline in
             try await pipeline.retry(id: id)
@@ -291,9 +301,11 @@ final class LibraryViewModel {
     }
 
     func updateNote(id: UUID, title: String, body: String) async -> Bool {
-        await performMutation { pipeline in
+        let saved = await performMutation { pipeline in
             try await pipeline.updateNote(id: id, title: title, body: body)
         }
+        if saved { Task { await self.synchronize() } }
+        return saved
     }
 
     func delete(id: UUID) async -> Bool {

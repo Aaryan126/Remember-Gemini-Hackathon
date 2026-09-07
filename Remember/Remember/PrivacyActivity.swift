@@ -7,6 +7,7 @@ nonisolated enum LocalAIActivityKind: String, Codable, DatabaseValueConvertible,
     case chat
     case transcription
     case wikiCompilation
+    case projectOrganization
 
     var label: String {
         switch self {
@@ -15,6 +16,7 @@ nonisolated enum LocalAIActivityKind: String, Codable, DatabaseValueConvertible,
         case .chat: "Ask Remember"
         case .transcription: "Voice transcription"
         case .wikiCompilation: "Legacy Project processing"
+        case .projectOrganization: "Topic organization"
         }
     }
 
@@ -25,6 +27,7 @@ nonisolated enum LocalAIActivityKind: String, Codable, DatabaseValueConvertible,
         case .chat: "bubble.left.and.bubble.right"
         case .transcription: "waveform"
         case .wikiCompilation: "books.vertical.fill"
+        case .projectOrganization: "point.3.connected.trianglepath.dotted"
         }
     }
 }
@@ -62,7 +65,7 @@ nonisolated struct LocalAIActivity: Codable, Equatable, FetchableRecord, Identif
 nonisolated enum RememberNetworkPolicy {
     static let outboundRequestsImplemented = true
 
-    static let summary = "Originals stay in the local vault. Relevant content is sent through the configured development proxy for OpenAI analysis, embeddings, and grounded answers."
+    static let summary = "Capture and topic organization use on-device processing by default. Optional cloud assistance, Ask, and AI search send relevant content through the configured OpenAI proxy. Apple may download embedding assets without sending your captures."
 
     static let limitation = "This screen describes Remember's implemented data flow and activity records; it is not a device-wide network monitor. The proxy keeps the API key out of the iOS app, but submitted excerpts still leave the device."
 }

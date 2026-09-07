@@ -29,7 +29,7 @@ actor MemoryPipeline {
     }
 
     static func live() throws -> MemoryPipeline {
-        let memoryStore = try MemoryStore(databaseURL: MemoryStore.defaultDatabaseURL())
+        let memoryStore = try MemoryStore.live()
         let fileStore = try LibraryFileStore(directoryURL: LibraryFileStore.defaultDirectory())
         let importer = CaptureImporter(
             inbox: try CaptureInbox.appGroup(),
@@ -38,22 +38,22 @@ actor MemoryPipeline {
         )
         let client = OpenAIAPIClient()
         let embeddingService = OpenAITextEmbeddingService(client: client)
-        let searchService = MemorySearchService(
+        let cloudSearchService = MemorySearchService(
             memoryStore: memoryStore,
             embeddingService: embeddingService
         )
         let assistant = OpenAIRememberAssistant(
             memoryStore: memoryStore,
-            searchService: searchService,
+            searchService: cloudSearchService,
             client: client
         )
         return MemoryPipeline(
-            analyzer: OpenAIMemoryAnalyzer(client: client),
+            analyzer: LocalCaptureAnalyzer(),
             assistant: assistant,
             fileStore: fileStore,
             importer: importer,
             memoryStore: memoryStore,
-            searchService: searchService,
+            searchService: MemorySearchService(memoryStore: memoryStore),
             speechTranscriber: OnDeviceSpeechTranscriber()
         )
     }
@@ -145,7 +145,7 @@ actor MemoryPipeline {
                     sourceCount: 1
                 )
             } catch is CancellationError {
-                try? await memoryStore.resetToCaptured(id: memory.id)
+                try? await memoryStore.resetToCaptured(id: memory.id, expectedFilename: memory.originalFilename)
                 try? await memoryStore.finishActivity(
                     id: transcriptionActivityID,
                     status: .interrupted,
@@ -155,7 +155,7 @@ actor MemoryPipeline {
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription
                     ?? "On-device transcription could not complete."
-                try await memoryStore.markFailed(id: memory.id, message: message)
+                try await memoryStore.markFailed(id: memory.id, message: message, expectedFilename: memory.originalFilename)
                 try? await memoryStore.finishActivity(
                     id: transcriptionActivityID,
                     status: .failed,
@@ -168,21 +168,27 @@ actor MemoryPipeline {
         let activityID = try await memoryStore.startActivity(
             kind: .analysis,
             memoryID: memory.id,
-            sourceCount: 1
+            sourceCount: 1,
+            modelVersion: ProjectPreferences.cloudEnabled ? "openai-capture" : "apple-local-capture"
         )
         do {
-            let result = try await analyzer.analyze(
-                memory: memory,
-                originalURL: originalURL,
-                supportingText: supportingText
-            )
-            try await memoryStore.markIndexed(id: memory.id, analysis: result)
+            let result: MemoryAnalysisResult
+            if let local = analyzer as? LocalCaptureAnalyzer {
+                let extracted = try await MemoryContentExtractor().extract(memory: memory, originalURL: originalURL, supportingText: supportingText)
+                try await memoryStore.saveExtraction(id: memory.id, filename: memory.originalFilename, extracted: extracted)
+                result = try await local.analyzeExtracted(memory: memory, originalURL: originalURL, supportingText: supportingText, extracted: extracted)
+            } else {
+                result = try await analyzer.analyze(memory: memory, originalURL: originalURL, supportingText: supportingText)
+            }
+            try await memoryStore.markIndexed(id: memory.id, analysis: result, expectedFilename: memory.originalFilename)
             if let indexedMemory = try await memoryStore.fetch(id: memory.id) {
                 try await searchService.index(indexedMemory)
             }
             try await memoryStore.finishActivity(id: activityID, status: .completed, sourceCount: 1)
+        } catch ProvenanceError.staleDecision {
+            try? await memoryStore.finishActivity(id: activityID, status: .interrupted, failureCategory: "source_changed")
         } catch is CancellationError {
-            try? await memoryStore.resetToCaptured(id: memory.id)
+            try? await memoryStore.resetToCaptured(id: memory.id, expectedFilename: memory.originalFilename)
             try? await memoryStore.finishActivity(
                 id: activityID,
                 status: .interrupted,
@@ -192,7 +198,7 @@ actor MemoryPipeline {
         } catch {
             let message = (error as? LocalizedError)?.errorDescription
                 ?? "OpenAI analysis could not complete."
-            try await memoryStore.markFailed(id: memory.id, message: message)
+            try await memoryStore.markFailed(id: memory.id, message: message, expectedFilename: memory.originalFilename)
             try? await memoryStore.finishActivity(
                 id: activityID,
                 status: .failed,
@@ -227,26 +233,25 @@ actor MemoryPipeline {
             throw MemoryStoreError.invalidMemoryKind(expected: .text, actual: memory.kind)
         }
 
-        let previousText = try String(contentsOf: fileStore.url(for: memory.originalFilename), encoding: .utf8)
-        try fileStore.replaceText(boundedDocument.text, filename: memory.originalFilename)
+        let filename = "\(UUID().uuidString).txt"
+        try fileStore.replaceText(boundedDocument.text, filename: filename)
 
         do {
-            try await memoryStore.updateNoteContent(id: id, document: boundedDocument)
+            try await memoryStore.updateNoteContent(id: id, document: boundedDocument, filename: filename)
             if let updatedMemory = try await memoryStore.fetch(id: id) {
                 try await searchService.index(updatedMemory)
             }
         } catch {
-            try? fileStore.replaceText(previousText, filename: memory.originalFilename)
+            // Only this uncommitted revision may be removed; previous payloads stay intact.
+            if (try? await memoryStore.fetch(id: id))?.originalFilename != filename {
+                try? fileStore.remove(filename: filename)
+            }
             throw error
         }
     }
 
     func delete(id: UUID) async throws {
-        guard let memory = try await memoryStore.fetch(id: id) else {
-            return
-        }
         try await memoryStore.delete(id: id)
-        try fileStore.remove(filename: memory.originalFilename)
     }
 
     func createVoiceMemory(from recordingURL: URL) async throws -> UUID {

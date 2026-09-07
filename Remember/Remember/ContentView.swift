@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system
     @State private var viewModel = LibraryViewModel()
+    @State private var projectModel = ProjectViewModel()
     @State private var showsAssistant = false
 
     var body: some View {
@@ -16,12 +17,12 @@ struct ContentView: View {
                     Label("Memories", systemImage: "square.grid.2x2")
                 }
 
-            ProjectView(onAsk: openAssistant)
+            ProjectView(model: projectModel, onAsk: openAssistant)
                 .tabItem {
                     Label("Project", systemImage: "point.3.connected.trianglepath.dotted")
                 }
 
-            SettingsView(viewModel: viewModel, onAsk: openAssistant)
+            SettingsView(viewModel: viewModel, projectModel: projectModel, onAsk: openAssistant)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
@@ -35,11 +36,27 @@ struct ContentView: View {
         .task {
             await viewModel.synchronize()
         }
+        .task { await projectModel.observe() }
+        .onReceive(NotificationCenter.default.publisher(for: ProjectPreferences.embeddingsAvailable)) { _ in
+            Task { await projectModel.refreshOrganization(retryUnavailable: true) }
+        }
+        .onChange(of: projectModel.snapshot.events.count) { _, _ in
+            guard let event = projectModel.snapshot.events.last, (try? event.payload().memory) != nil else { return }
+            Task {
+                await viewModel.reloadLibraryProjection()
+                if projectModel.snapshot.memories.values.contains(where: { $0.state == .captured && !$0.isArchived }) {
+                    await viewModel.synchronize()
+                }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else {
                 return
             }
-            Task { await viewModel.synchronize() }
+            Task {
+                await viewModel.synchronize()
+                await projectModel.refreshOrganization()
+            }
         }
     }
 

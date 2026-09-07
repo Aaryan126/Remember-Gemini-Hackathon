@@ -1,18 +1,21 @@
 # Remember
 
-Remember is an iPhone memory vault for notes, images, links, PDFs, and voice recordings. This repository is currently at a reset baseline: **Memories** and **Settings** remain active, while **Project** is intentionally reduced to a placeholder ahead of a full redesign.
+Remember is an iPhone memory vault for notes, images, links, PDFs, and voice recordings. **Memories** handles capture and retrieval; **Project** shows the provenance timeline, topic graph, and each thread’s River; **Settings** includes optional cloud assistance and the archive.
 
 ## Current product surface
 
 - Capture content in the app or through the Share Extension.
 - Keep original files and metadata in the local vault.
 - Extract text with Apple Vision and transcribe speech with Apple Speech on-device.
-- Use OpenAI for titles, summaries, tags, embeddings, query expansion, and grounded answers.
+- Enrich captures locally with Apple extraction and Foundation Models where available; organize topics using contextual and sentence embeddings plus shared source evidence.
+- Opt into OpenAI capture enrichment and topic reasoning, or explicitly use AI search and grounded answers.
 - Verify generated answer quotes against retrieved source text before displaying them.
-- Browse, search, edit, organize, and delete saved memories.
-- Open the Project tab to see the rebuild placeholder. The former Project Story, Knowledge Map, compilation, review, audit, and export interfaces are no longer active.
+- Browse, search, revise, organize, archive, and restore saved memories without erasing their history.
+- Switch Project between Timeline and Graph, drill into a topic’s River, inspect placement evidence, compare past state, and correct organization. High-confidence merges are automatic; splits require acceptance.
 
-No Gemma, LFM, BGE, MLX, Hugging Face, or other downloaded model weights are required or bundled.
+No third-party model weights are bundled. Apple contextual embedding assets may download on demand; capture and singleton topics remain available while models are unavailable.
+
+Automatic organization requires agreement between both embedding signals, individual-member checks, and specific shared source terms. Ambiguous matches remain separate or use bounded reasoning. Existing mistaken groups receive reviewable split suggestions rather than being silently rewritten. See the [device evaluation and clustering policy](docs/evaluations/2026-09-07-grounded-clustering.md) and [repeatable device-test instructions](scripts/embedding-evaluation/README.md).
 
 ## OpenAI setup
 
@@ -34,7 +37,7 @@ The requested generation model is `gpt-5.5`, configured through `OPENAI_MODEL`. 
 
 ## Data boundary
 
-The iOS app does not contain the OpenAI key. It sends bounded requests to the configured proxy, which authenticates upstream to OpenAI. Depending on the operation, those requests can contain:
+The iOS app does not contain the OpenAI key. Cloud assistance is off by default. Explicit Ask and AI-search actions remain cloud features independently of that setting. Bounded requests go to the configured proxy, which authenticates upstream to OpenAI. Depending on the enabled operation, requests can contain:
 
 - extracted text and user captions for memory analysis;
 - an image being analyzed;
@@ -45,12 +48,14 @@ Original vault files, the SQLite database, and local activity metadata stay on t
 
 ## Architecture
 
-- `Remember/Remember/` — SwiftUI app, capture pipeline, local vault, extraction, search, OpenAI client, and reset Project screen.
+- `Remember/Remember/` — SwiftUI app, capture pipeline, local vault, extraction, search, optional OpenAI client, append-only provenance, and Project views.
 - `Remember/RememberShareExtension/` — lightweight capture handoff; it does not call OpenAI.
 - `server/openai_proxy.py` — development proxy that loads `.env`, injects the API key, and forwards only Responses and Embeddings requests.
 - `Evaluation/` and `scripts/` — provider-independent grounded-answer fixtures and deterministic scoring utilities.
 
 Legacy Project database records and compatibility types remain dormant so existing local databases are not destructively migrated during this reset. No live navigation or pipeline invokes the former Project compiler.
+
+The new provenance layer is independent of those legacy records. See [Provenance architecture and operation](docs/provenance.md) for migration, retention, organization policies, and validation details.
 
 ## Validation
 

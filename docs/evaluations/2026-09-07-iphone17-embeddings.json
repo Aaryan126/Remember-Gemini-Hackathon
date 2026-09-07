@@ -1,0 +1,350 @@
+{
+  "actualGraphRunsWithoutReasoning": [
+    {
+      "clusters": [
+        [
+          "bread-note",
+          "bread-ocr",
+          "bread-transcript",
+          "calculus-note",
+          "calculus-ocr",
+          "calculus-transcript",
+          "ios-note",
+          "ios-ocr",
+          "ios-transcript",
+          "travel-note",
+          "travel-ocr",
+          "travel-transcript"
+        ]
+      ],
+      "inputOrder": [
+        "calculus-note",
+        "calculus-transcript",
+        "calculus-ocr",
+        "bread-note",
+        "bread-transcript",
+        "bread-ocr",
+        "ios-note",
+        "ios-transcript",
+        "ios-ocr",
+        "travel-note",
+        "travel-transcript",
+        "travel-ocr"
+      ],
+      "mergeEvents": 0,
+      "mixedTopicClusters": 1,
+      "placementVectorCount": 12,
+      "repeatSynchronizationAddsNoEvents": true
+    },
+    {
+      "clusters": [
+        [
+          "bread-note",
+          "bread-ocr",
+          "bread-transcript"
+        ],
+        [
+          "calculus-note",
+          "calculus-ocr",
+          "calculus-transcript",
+          "ios-note",
+          "ios-ocr",
+          "ios-transcript"
+        ],
+        [
+          "travel-note",
+          "travel-transcript"
+        ],
+        [
+          "travel-ocr"
+        ]
+      ],
+      "inputOrder": [
+        "calculus-note",
+        "bread-note",
+        "ios-note",
+        "travel-note",
+        "calculus-transcript",
+        "bread-transcript",
+        "ios-transcript",
+        "travel-transcript",
+        "calculus-ocr",
+        "bread-ocr",
+        "ios-ocr",
+        "travel-ocr"
+      ],
+      "mergeEvents": 1,
+      "mixedTopicClusters": 1,
+      "placementVectorCount": 12,
+      "repeatSynchronizationAddsNoEvents": true
+    }
+  ],
+  "assetsInitiallyAvailable": true,
+  "checks": {
+    "bread-note-space": true,
+    "bread-note-valid": true,
+    "bread-ocr-space": true,
+    "bread-ocr-valid": true,
+    "bread-transcript-space": true,
+    "bread-transcript-valid": true,
+    "calculus-note-space": true,
+    "calculus-note-valid": true,
+    "calculus-ocr-space": true,
+    "calculus-ocr-valid": true,
+    "calculus-transcript-space": true,
+    "calculus-transcript-valid": true,
+    "emptyReturnsNil": true,
+    "ios-note-space": true,
+    "ios-note-valid": true,
+    "ios-ocr-space": true,
+    "ios-ocr-valid": true,
+    "ios-transcript-space": true,
+    "ios-transcript-valid": true,
+    "longInputValid": true,
+    "repeatStable": true,
+    "semanticNearestNeighbors": true,
+    "travel-note-space": true,
+    "travel-note-valid": true,
+    "travel-ocr-space": true,
+    "travel-ocr-valid": true,
+    "travel-transcript-space": true,
+    "travel-transcript-valid": true,
+    "unrelatedPairSafetyAt080": false,
+    "unrelatedPairSafetyAt092": false
+  },
+  "cosineMatrix": [
+    [
+      1.0000000190295841,
+      0.9530626761011076,
+      0.963413763577556,
+      0.7972253495863524,
+      0.8286229936992857,
+      0.8052193069687813,
+      0.901560498879198,
+      0.9136229336741323,
+      0.9129879285098378,
+      0.8137392520908405,
+      0.83450583590132,
+      0.8397663537280817
+    ],
+    [
+      0.9530626761011076,
+      1.0000000159140872,
+      0.9402523449173775,
+      0.8026642821469813,
+      0.8407239717301653,
+      0.8147182865340881,
+      0.9205472768369221,
+      0.908156385922271,
+      0.9337737253923388,
+      0.8527312831866837,
+      0.872355166915366,
+      0.8682341175427737
+    ],
+    [
+      0.963413763577556,
+      0.9402523449173775,
+      0.9999999732764927,
+      0.8306366053226524,
+      0.8585423741682233,
+      0.8490452434832764,
+      0.9142703480401015,
+      0.9267610007243412,
+      0.934636758763772,
+      0.8470786105652143,
+      0.8578581282115453,
+      0.8747542241789537
+    ],
+    [
+      0.7972253495863524,
+      0.8026642821469813,
+      0.8306366053226524,
+      1.0000000362537422,
+      0.9627032899018493,
+      0.9714289965182098,
+      0.7957078631962207,
+      0.8185079565007586,
+      0.8094673120259511,
+      0.792398408135653,
+      0.8181753130455247,
+      0.8001154918114666
+    ],
+    [
+      0.8286229936992857,
+      0.8407239717301653,
+      0.8585423741682233,
+      0.9627032899018493,
+      1.0000000033608307,
+      0.9533153491001067,
+      0.844274796256786,
+      0.8596496619710583,
+      0.8541700382554884,
+      0.8353152791939579,
+      0.8701365833745396,
+      0.8411309446701337
+    ],
+    [
+      0.8052193069687813,
+      0.8147182865340881,
+      0.8490452434832764,
+      0.9714289965182098,
+      0.9533153491001067,
+      1.000000016488511,
+      0.8049294196845789,
+      0.8197546282399396,
+      0.8318654627873717,
+      0.7870710293472684,
+      0.8093811524954853,
+      0.8066223173720535
+    ],
+    [
+      0.901560498879198,
+      0.9205472768369221,
+      0.9142703480401015,
+      0.7957078631962207,
+      0.844274796256786,
+      0.8049294196845789,
+      0.999999962871022,
+      0.9601330500138657,
+      0.9459029263864875,
+      0.8547948717964481,
+      0.8606747170698293,
+      0.8637305424332776
+    ],
+    [
+      0.9136229336741323,
+      0.908156385922271,
+      0.9267610007243412,
+      0.8185079565007586,
+      0.8596496619710583,
+      0.8197546282399396,
+      0.9601330500138657,
+      0.9999999788911176,
+      0.9323250166995642,
+      0.8587229098527132,
+      0.87166713022204,
+      0.8673104050878028
+    ],
+    [
+      0.9129879285098378,
+      0.9337737253923388,
+      0.934636758763772,
+      0.8094673120259511,
+      0.8541700382554884,
+      0.8318654627873717,
+      0.9459029263864875,
+      0.9323250166995642,
+      0.9999999517264343,
+      0.8677981197807383,
+      0.8721188551827856,
+      0.8972022104441388
+    ],
+    [
+      0.8137392520908405,
+      0.8527312831866837,
+      0.8470786105652143,
+      0.792398408135653,
+      0.8353152791939579,
+      0.7870710293472684,
+      0.8547948717964481,
+      0.8587229098527132,
+      0.8677981197807383,
+      0.9999999847355941,
+      0.9612132073237437,
+      0.9603975022558208
+    ],
+    [
+      0.83450583590132,
+      0.872355166915366,
+      0.8578581282115453,
+      0.8181753130455247,
+      0.8701365833745396,
+      0.8093811524954853,
+      0.8606747170698293,
+      0.87166713022204,
+      0.8721188551827856,
+      0.9612132073237437,
+      0.9999999620103645,
+      0.9361829459181875
+    ],
+    [
+      0.8397663537280817,
+      0.8682341175427737,
+      0.8747542241789537,
+      0.8001154918114666,
+      0.8411309446701337,
+      0.8066223173720535,
+      0.8637305424332776,
+      0.8673104050878028,
+      0.8972022104441388,
+      0.9603975022558208,
+      0.9361829459181875,
+      0.9999999965190143
+    ]
+  ],
+  "deviceOS": "Version 26.6.1 (Build 23G83)",
+  "differentTopicPairCount": 54,
+  "differentTopicPairsAtMergeThreshold": 4,
+  "differentTopicPairsAtPlacementThreshold": 50,
+  "differentTopicRange": [
+    0.7870710293472684,
+    0.934636758763772
+  ],
+  "dimension": 512,
+  "embeddingMilliseconds": [
+    153.69775,
+    64.696083,
+    57.6675,
+    58.525041,
+    56.522792,
+    56.82425,
+    63.048042,
+    54.886791,
+    56.110209,
+    54.839875,
+    61.357917,
+    58.058667
+  ],
+  "foundationModels": "available",
+  "longInputCharacters": 2379,
+  "longInputCosineToShort": 0.9962560679929622,
+  "longInputMilliseconds": 341.330041,
+  "maximumSequenceLength": 256,
+  "modelIdentifier": "5C45D94E-BAB4-4927-94B6-8B5745C46289",
+  "nearestNeighborSameTopic": 12,
+  "policy": "centroid-v1-080-margin008-merge092",
+  "repeatCosine": 1.0000000190295841,
+  "revision": 1,
+  "sameTopicRange": [
+    0.9323250166995642,
+    0.9714289965182098
+  ],
+  "sampleIDs": [
+    "calculus-note",
+    "calculus-transcript",
+    "calculus-ocr",
+    "bread-note",
+    "bread-transcript",
+    "bread-ocr",
+    "ios-note",
+    "ios-transcript",
+    "ios-ocr",
+    "travel-note",
+    "travel-transcript",
+    "travel-ocr"
+  ],
+  "sentenceEmbeddingComparison": {
+    "differentTopicRange": [
+      0.030935736784639983,
+      0.5099511044017873
+    ],
+    "dimension": 512,
+    "sameTopicRange": [
+      0.44338329737918447,
+      0.805308043077811
+    ]
+  },
+  "space": "5C45D94E-BAB4-4927-94B6-8B5745C46289:1:512:token-mean-v1",
+  "status": "quality_checks_failed",
+  "syntheticInputsOnly": true
+}

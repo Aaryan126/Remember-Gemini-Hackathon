@@ -64,7 +64,7 @@ nonisolated struct MemoryItem: Codable, Equatable, FetchableRecord, Identifiable
     let importedAt: Date
     var updatedAt: Date
     var state: MemoryProcessingState
-    let originalFilename: String
+    var originalFilename: String
     var userCaption: String?
     var title: String?
     var summary: String?
@@ -73,6 +73,7 @@ nonisolated struct MemoryItem: Codable, Equatable, FetchableRecord, Identifiable
     var processingError: String?
     var modelVersion: String?
     var analysisIsPartial: Bool = false
+    var isArchived: Bool = false
 
     var tags: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(tagsJSON.utf8))) ?? []

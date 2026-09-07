@@ -110,6 +110,63 @@ final class RememberUITests: XCTestCase {
     }
 
     @MainActor
+    func testProjectCaptureRiverHistoryAndViewPreference() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let title = "Provenance UI \(UUID().uuidString.prefix(6))"
+        app.tabBars.buttons["Memories"].tap()
+        app.buttons["Add a memory"].tap()
+        app.buttons["New Note"].tap()
+        let field = app.textFields["Title"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText(title)
+        app.buttons["Save"].tap()
+        app.tabBars.buttons["Project"].tap()
+        let picker = app.segmentedControls["Project view"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.buttons["Timeline"].tap()
+        XCTAssertTrue(app.staticTexts[title].firstMatch.waitForExistence(timeout: 10))
+        let chip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "project-topic-", title)).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 10))
+        chip.tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        let history = app.switches["Travel through time"]
+        XCTAssertTrue(history.exists)
+        history.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertTrue(app.sliders["History date"].waitForExistence(timeout: 5))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Project river and historical comparison"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        picker.buttons["Graph"].tap()
+        XCTAssertTrue(app.buttons["Zoom in"].exists)
+        app.terminate(); app.launch()
+        app.tabBars.buttons["Project"].tap()
+        XCTAssertTrue(app.buttons["Zoom in"].waitForExistence(timeout: 5))
+        let graphImage = XCTAttachment(screenshot: app.screenshot())
+        graphImage.name = "Project graph"
+        graphImage.lifetime = .keepAlways
+        add(graphImage)
+        picker.buttons["Timeline"].tap()
+        chip.tap()
+        let source = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "project-source-", title)).firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.tap()
+        let archive = app.buttons["Archive memory"]
+        for _ in 0..<5 where !archive.isHittable { app.swipeUp() }
+        XCTAssertTrue(archive.isHittable)
+        archive.tap()
+        app.tabBars.buttons["Settings"].tap()
+        app.staticTexts["Archive"].firstMatch.tap()
+        let restore = app.buttons["Restore \(title)"]
+        XCTAssertTrue(restore.waitForExistence(timeout: 5))
+        restore.tap()
+        app.tabBars.buttons["Memories"].tap()
+        XCTAssertTrue(app.buttons[title].firstMatch.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

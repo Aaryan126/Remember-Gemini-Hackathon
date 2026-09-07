@@ -2,8 +2,10 @@ import SwiftUI
 
 struct SettingsView: View {
     let viewModel: LibraryViewModel
+    let projectModel: ProjectViewModel
     let onAsk: () -> Void
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system
+    @AppStorage(ProjectPreferences.cloudKey) private var cloudAssistance = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,9 @@ struct SettingsView: View {
                 }
 
                 Section("Library") {
+                    NavigationLink { ProjectArchiveView(model: projectModel) } label: {
+                        SettingsRow(title: "Archive", detail: "Restore memories and their history", systemImage: "archivebox")
+                    }
                     NavigationLink {
                         OrganizeView(viewModel: viewModel)
                     } label: {
@@ -38,6 +43,7 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Cloud assistance", isOn: $cloudAssistance)
                     NavigationLink {
                         PrivacyDashboardView(viewModel: viewModel)
                     } label: {
@@ -50,7 +56,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Privacy")
                 } footer: {
-                    Text("Review OpenAI processing and activity stored on this iPhone.")
+                    Text("Automatic capture and topic organization use Apple’s on-device tools by default. Cloud assistance sends source excerpts (and images during enrichment) to the configured OpenAI service. Ask and AI search send relevant content when you explicitly use them, independently of this setting.")
                 }
             }
             .listStyle(.insetGrouped)

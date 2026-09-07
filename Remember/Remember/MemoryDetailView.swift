@@ -36,9 +36,9 @@ struct MemoryDetailView: View {
                                 Button(role: .destructive) {
                                     showsNoteDeleteConfirmation = true
                                 } label: {
-                                    Image(systemName: "trash")
+                                    Image(systemName: "archivebox")
                                 }
-                                .accessibilityLabel("Delete Note")
+                                .accessibilityLabel("Archive Note")
                                 .disabled(isSavingNote || isDeletingNote)
                             }
                             ToolbarItem(placement: .topBarTrailing) {
@@ -94,16 +94,16 @@ struct MemoryDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .confirmationDialog(
-            "Delete this note?",
+            "Archive this note?",
             isPresented: $showsNoteDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Note", role: .destructive) {
+            Button("Archive Note") {
                 deleteNote()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This note will be permanently removed from Remember.")
+            Text("The note and its history will be kept. Restore it from Project’s archive.")
         }
     }
 
@@ -458,7 +458,7 @@ private struct MemoryEditSheet: View {
                     Button(role: .destructive) {
                         showsDeleteConfirmation = true
                     } label: {
-                        Label("Delete Memory", systemImage: "trash")
+                        Label("Archive Memory", systemImage: "archivebox")
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
                             .contentShape(Rectangle())
@@ -497,16 +497,16 @@ private struct MemoryEditSheet: View {
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isSaving || isDeleting)
         .confirmationDialog(
-            "Delete this memory?",
+            "Archive this memory?",
             isPresented: $showsDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Memory", role: .destructive) {
+            Button("Archive Memory") {
                 deleteMemory()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This memory will be permanently removed from Remember.")
+            Text("The memory and its history will be kept. Restore it from Project’s archive.")
         }
     }
 

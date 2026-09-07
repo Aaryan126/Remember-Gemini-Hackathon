@@ -2,7 +2,14 @@ import Foundation
 import GRDB
 
 actor MemoryStore {
-    private let databasePool: DatabasePool
+    // GRDB observations are connection-scoped. All live consumers must share the same pool.
+    private static let liveInstance: Result<MemoryStore, Error> = Result {
+        try MemoryStore(databaseURL: defaultDatabaseURL())
+    }
+
+    static func live() throws -> MemoryStore { try liveInstance.get() }
+
+    let databasePool: DatabasePool
 
     init(databaseURL: URL, fileManager: FileManager = .default) throws {
         let directoryURL = databaseURL.deletingLastPathComponent()
@@ -262,6 +269,7 @@ actor MemoryStore {
                 table.column("modelVersion", .text).notNull()
             }
         }
+        Self.registerProvenanceMigration(&migrator)
         try migrator.migrate(databasePool)
         try fileManager.setAttributes(Self.protectedAttributes, ofItemAtPath: databaseURL.path)
     }
@@ -278,12 +286,14 @@ actor MemoryStore {
                 return
             }
             try item.insert(database)
+            try Self.recordMemory(item, kind: .capture, in: database)
         }
     }
 
     func fetchAll() async throws -> [MemoryItem] {
         try await databasePool.read { database in
             try MemoryItem
+                .filter(Column("isArchived") == false)
                 .order(Column("createdAt").desc)
                 .fetchAll(database)
         }
@@ -293,6 +303,7 @@ actor MemoryStore {
         try await databasePool.read { database in
             try MemoryItem
                 .filter(Column("state") == MemoryProcessingState.indexed)
+                .filter(Column("isArchived") == false)
                 .order(Column("createdAt").desc)
                 .fetchAll(database)
         }
@@ -537,6 +548,7 @@ actor MemoryStore {
         try await databasePool.write { database in
             guard var item = try MemoryItem
                 .filter(Column("state") == MemoryProcessingState.captured)
+                .filter(Column("isArchived") == false)
                 .order(Column("createdAt").asc)
                 .fetchOne(database)
             else {
@@ -550,11 +562,12 @@ actor MemoryStore {
         }
     }
 
-    func markIndexed(id: UUID, analysis: MemoryAnalysisResult) async throws {
+    func markIndexed(id: UUID, analysis: MemoryAnalysisResult, expectedFilename: String? = nil) async throws {
         try await databasePool.write { database in
             guard var item = try MemoryItem.fetchOne(database, key: id) else {
                 throw MemoryStoreError.missingMemory(id)
             }
+            guard !item.isArchived, expectedFilename == nil || (item.originalFilename == expectedFilename && item.state == .processing) else { return }
             item.state = .indexed
             if item.kind == .text {
                 let note = NoteDocument(text: analysis.extractedText)
@@ -566,11 +579,21 @@ actor MemoryStore {
             }
             item.extractedText = analysis.extractedText
             item.setTags(analysis.tags)
+            let correction = try ProvenanceEvent.filter(Column("memoryID") == id)
+                .filter(["metadata", "revision", "capture", "imported"].contains(Column("kind")))
+                .order(Column("sequence").desc).fetchOne(database)
+            if correction?.kind == .metadata, let edited = try correction?.payload().memory {
+                item.title = edited.title
+                item.summary = edited.summary
+                item.tagsJSON = edited.tagsJSON
+            }
             item.processingError = nil
             item.modelVersion = analysis.modelVersion
             item.analysisIsPartial = analysis.isPartial
             item.updatedAt = Date()
             try item.update(database)
+
+            try Self.recordMemory(item, kind: .enrichment, in: database)
 
             _ = try MemoryChunk.filter(Column("memoryID") == id).deleteAll(database)
             let drafts = analysis.chunks.isEmpty
@@ -586,15 +609,15 @@ actor MemoryStore {
         }
     }
 
-    func markFailed(id: UUID, message: String) async throws {
-        try await update(id: id) { item in
+    func markFailed(id: UUID, message: String, expectedFilename: String? = nil) async throws {
+        try await update(id: id, eventKind: .processing, expectedFilename: expectedFilename) { item in
             item.state = .failed
             item.processingError = String(message.prefix(500))
         }
     }
 
-    func resetToCaptured(id: UUID) async throws {
-        try await update(id: id) { item in
+    func resetToCaptured(id: UUID, expectedFilename: String? = nil) async throws {
+        try await update(id: id, eventKind: .processing, expectedFilename: expectedFilename) { item in
             item.state = .captured
             item.processingError = nil
         }
@@ -608,22 +631,24 @@ actor MemoryStore {
         }
     }
 
-    func updateNoteContent(id: UUID, document: NoteDocument) async throws {
+    func updateNoteContent(id: UUID, document: NoteDocument, filename: String? = nil) async throws {
         try await databasePool.write { database in
             guard var item = try MemoryItem.fetchOne(database, key: id) else {
                 throw MemoryStoreError.missingMemory(id)
             }
             item.title = String(document.displayTitle.prefix(120))
+            if let filename { item.originalFilename = filename }
             item.summary = document.body.isEmpty
                 ? document.displayTitle
                 : String(document.body.prefix(1_000))
             item.userCaption = document.text
             item.extractedText = document.text
-            item.state = .indexed
+            item.state = filename == nil ? .indexed : .captured
             item.processingError = nil
             item.analysisIsPartial = false
             item.updatedAt = Date()
             try item.update(database)
+            try Self.recordMemory(item, kind: .revision, in: database)
 
             _ = try MemoryChunk.filter(Column("memoryID") == id).deleteAll(database)
             for draft in MemoryChunker.legacyDrafts(for: item) {
@@ -637,9 +662,7 @@ actor MemoryStore {
     }
 
     func delete(id: UUID) async throws {
-        try await databasePool.write { database in
-            _ = try MemoryItem.deleteOne(database, key: id)
-        }
+        try await setArchived(id: id, archived: true)
     }
 
     func fetchCollectionSummaries() async throws -> [MemoryCollectionSummary] {
@@ -650,7 +673,7 @@ actor MemoryStore {
             return try collections.map { collection in
                 let count = try Int.fetchOne(
                     database,
-                    sql: "SELECT COUNT(*) FROM memoryCollectionMembership WHERE collectionID = ?",
+                    sql: "SELECT COUNT(*) FROM memoryCollectionMembership JOIN memory ON memory.id = memoryID WHERE collectionID = ? AND memory.isArchived = 0",
                     arguments: [collection.id]
                 ) ?? 0
                 return MemoryCollectionSummary(collection: collection, memoryCount: count)
@@ -739,7 +762,7 @@ actor MemoryStore {
                     SELECT memory.*
                     FROM memory
                     JOIN memoryCollectionMembership membership ON membership.memoryID = memory.id
-                    WHERE membership.collectionID = ?
+                    WHERE membership.collectionID = ? AND memory.isArchived = 0
                     ORDER BY memory.createdAt DESC
                     """,
                 arguments: [collectionID]
@@ -1455,14 +1478,18 @@ actor MemoryStore {
         first.uuidString < second.uuidString ? (first, second) : (second, first)
     }
 
-    private func update(id: UUID, mutation: @Sendable (inout MemoryItem) -> Void) async throws {
+    private func update(id: UUID, eventKind: ProvenanceKind = .metadata, expectedFilename: String? = nil, mutation: @Sendable (inout MemoryItem) -> Void) async throws {
         try await databasePool.write { database in
             guard var item = try MemoryItem.fetchOne(database, key: id) else {
                 throw MemoryStoreError.missingMemory(id)
             }
+            if let expectedFilename {
+                guard item.originalFilename == expectedFilename, item.state == .processing, !item.isArchived else { return }
+            }
             mutation(&item)
             item.updatedAt = Date()
             try item.update(database)
+            try Self.recordMemory(item, kind: eventKind, in: database)
         }
     }
 
@@ -1500,6 +1527,7 @@ actor MemoryStore {
                 memory.setTags(transform(memory.tags))
                 memory.updatedAt = Date()
                 try memory.update(database)
+                try Self.recordMemory(memory, kind: .metadata, in: database)
                 changed.append(memory)
             }
             return changed

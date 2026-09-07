@@ -63,7 +63,7 @@ struct PrivacyDashboardView: View {
                         ContentUnavailableView(
                             "No AI activity yet",
                             systemImage: "clock.badge.checkmark",
-                            description: Text("Transcription, OpenAI analysis, semantic search, and Ask Remember operations will appear here.")
+                            description: Text("Transcription, local or cloud analysis, topic reasoning, semantic search, and Ask Remember operations will appear here.")
                         )
                     } else {
                         ForEach(viewModel.activities) { activity in
@@ -90,12 +90,7 @@ struct PrivacyDashboardView: View {
     }
 
     private var aiProcessingStatus: String {
-        switch viewModel.aiAvailability {
-        case .available:
-            "Apple extraction + configured OpenAI service"
-        case .unavailable:
-            "Apple extraction + offline fallback"
-        }
+        ProjectPreferences.cloudEnabled ? "Cloud assistance enabled" : "On-device capture and organization"
     }
 }
 
