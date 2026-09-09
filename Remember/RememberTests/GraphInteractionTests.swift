@@ -4,6 +4,80 @@ import Testing
 @testable import Remember
 
 struct GraphInteractionTests {
+    @Test func mapDepthBringsTheCenterForwardAndTracksPanning() {
+        let layout = ProjectGraphLayout(memberCounts: [1, 1, 1, 1, 1, 1])
+        let viewport = CGSize(width: 370, height: 460)
+        let scale = ProjectGraphLayout.browsingScale(in: viewport)
+        let initial = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: .zero,
+            focusedIndex: nil, reduceMotion: false)
+        let center = CGPoint(x: viewport.width / 2, y: (viewport.height - 40) / 2)
+        let offset = CGSize(width: center.x - initial.nodes[0].center.x, height: center.y - initial.nodes[0].center.y)
+        let centered = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: offset,
+            focusedIndex: nil, reduceMotion: false)
+        #expect(centered.nodes[0].diameter > initial.nodes[0].diameter)
+        #expect(abs(centered.nodes[0].scale - scale * 1.04) < 0.00001)
+        #expect(centered.hitTest(center) == 0)
+        #expect(centered.hitTest(CGPoint(x: -10000, y: -10000)) == nil)
+    }
+
+    @Test func mapFocusLiftsTheNodeAndMakesRoomWithoutMovingSavedPositions() {
+        let layout = ProjectGraphLayout(memberCounts: [2, 2])
+        let viewport = CGSize(width: 370, height: 460)
+        let idle = ProjectGraphProjection(layout: layout, viewport: viewport, scale: 1, pan: .zero,
+            focusedIndex: nil, reduceMotion: false)
+        let focus = ProjectGraphProjection(layout: layout, viewport: viewport, scale: 1, pan: .zero,
+            focusedIndex: 0, reduceMotion: false)
+        #expect(focus.nodes[0].center == idle.nodes[0].center)
+        #expect(abs(focus.nodes[0].diameter / idle.nodes[0].diameter - 1.06) < 0.00001)
+        let before = hypot(idle.nodes[1].center.x - idle.nodes[0].center.x, idle.nodes[1].center.y - idle.nodes[0].center.y)
+        let after = hypot(focus.nodes[1].center.x - focus.nodes[0].center.x, focus.nodes[1].center.y - focus.nodes[0].center.y)
+        #expect(after > before && after - before <= 7)
+        #expect(focus.hitTest(focus.nodes[0].center) == 0)
+    }
+
+    @Test func mapReduceMotionDisablesDepthLiftAndNeighborMovement() {
+        let layout = ProjectGraphLayout(memberCounts: [1, 5])
+        let viewport = CGSize(width: 370, height: 460)
+        let idle = ProjectGraphProjection(layout: layout, viewport: viewport, scale: 0.8, pan: .zero,
+            focusedIndex: nil, reduceMotion: true)
+        let focus = ProjectGraphProjection(layout: layout, viewport: viewport, scale: 0.8, pan: .zero,
+            focusedIndex: 0, reduceMotion: true)
+        for index in idle.nodes.indices {
+            #expect(focus.nodes[index].center == idle.nodes[index].center)
+            #expect(focus.nodes[index].diameter == layout.diameter(index) * 0.8)
+        }
+    }
+
+    @Test func mapConnectionsMeetProjectedRimsAndHandleEmptyLayouts() throws {
+        let layout = ProjectGraphLayout(memberCounts: [1, 5])
+        let projection = ProjectGraphProjection(layout: layout, viewport: CGSize(width: 370, height: 460), scale: 0.8,
+            pan: CGSize(width: 20, height: -15), focusedIndex: 0, reduceMotion: false)
+        let ends = try #require(projection.endpoints(for: .init(first: 0, second: 1)))
+        let node = projection.nodes[0]
+        #expect(abs(hypot(ends.start.x - node.center.x, ends.start.y - node.center.y) - node.diameter / 2 - 2) < 0.00001)
+        #expect(projection.endpoints(for: .init(first: 0, second: 0)) == nil)
+        let empty = ProjectGraphProjection(layout: .init(count: 0), viewport: .zero, scale: 0, pan: .zero,
+            focusedIndex: 12, reduceMotion: false)
+        #expect(empty.nodes.isEmpty && empty.hitTest(.zero) == nil)
+        #expect(empty.endpoints(for: .init(first: 0, second: 1)) == nil)
+    }
+
+    @Test func mapFocusDepthPreservesSeparationAcrossViewportSizes() {
+        for count in [2, 6, 9, 40] {
+            let layout = ProjectGraphLayout(memberCounts: (0..<count).map { 1 + $0 % 8 })
+            for viewport in [CGSize(width: 288, height: 350), CGSize(width: 370, height: 600), CGSize(width: 800, height: 900)] {
+                let projection = ProjectGraphProjection(layout: layout, viewport: viewport, scale: ProjectGraphLayout.browsingScale(in: viewport),
+                    pan: CGSize(width: 35, height: -15), focusedIndex: count / 2, reduceMotion: false)
+                for first in 0..<count {
+                    for second in (first + 1)..<count {
+                        let a = projection.nodes[first], b = projection.nodes[second]
+                        #expect(hypot(a.center.x - b.center.x, a.center.y - b.center.y) >= (a.diameter + b.diameter) / 2)
+                    }
+                }
+            }
+        }
+    }
+
     @Test @MainActor func coastingStopsImmediatelyAndDoesNotStartForZeroSpeed() {
         let coaster = CaptureDialCoaster()
         coaster.start(velocity: 10) { _ in }
@@ -103,11 +177,33 @@ struct GraphInteractionTests {
                     #expect(hypot(point.x - other.x, point.y - other.y) >= radius + layout.diameter(next) / 2 + 20)
                 }
             }
-            let viewport = CGSize(width: 343, height: 420)
-            let scale = layout.fitScale(in: viewport)
-            #expect(scale.isFinite && scale > 0)
-            #expect(layout.size.width * scale <= viewport.width + 0.00001)
-            #expect(layout.size.height * scale <= viewport.height - 64 + 0.00001)
+        }
+    }
+
+    @Test func browsingScaleKeepsLabelsReadableWithoutFittingTheLibrary() {
+        for width: CGFloat in [0, 288, 343, 402, 800] {
+            let scale = ProjectGraphLayout.browsingScale(in: CGSize(width: width, height: 600))
+            #expect(scale >= 0.8 && scale <= 1)
+            #expect(scale == ProjectGraphLayout.browsingScale(in: CGSize(width: width, height: 200)))
+            let small = ProjectGraphLayout(count: 1)
+            let large = ProjectGraphLayout(count: 40)
+            #expect(small.diameter(0) * scale == large.diameter(0) * scale)
+            #expect(large.diameter(0) * scale * 0.9 > 80)
+        }
+    }
+
+    @Test func panningCanBringEveryCircleToTheCenterWithoutZoom() {
+        for count in [1, 6, 9, 40] {
+            let layout = ProjectGraphLayout(memberCounts: (0..<count).map { 1 + $0 % 8 })
+            let viewport = CGSize(width: 370, height: 600)
+            let scale = ProjectGraphLayout.browsingScale(in: viewport)
+            let center = CGPoint(x: viewport.width / 2, y: (viewport.height - 40) / 2)
+            let overview = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: .zero,
+                focusedIndex: nil, reduceMotion: false)
+            for node in overview.nodes {
+                let desired = CGSize(width: center.x - node.center.x, height: center.y - node.center.y)
+                #expect(ProjectGraphLayout.boundedPan(desired, content: layout.size, viewport: viewport, scale: scale) == desired)
+            }
         }
     }
 
@@ -146,7 +242,7 @@ struct GraphInteractionTests {
         let viewport = CGSize(width: 343, height: 420)
         #expect(ProjectGraphLayout.boundedPan(.zero, content: size, viewport: viewport, scale: 1) == .zero)
         let pan = ProjectGraphLayout.boundedPan(CGSize(width: 10000, height: -10000), content: size, viewport: viewport, scale: 1)
-        #expect(pan.width == 72.5 && pan.height == -70)
+        #expect(pan.width == 112 && pan.height == -148)
     }
 
     @Test func mapShowsOnlyEvidenceBasedConnectionsAndExcludesArchivedSources() {

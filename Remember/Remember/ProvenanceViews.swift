@@ -54,6 +54,8 @@ struct ClusterRiverView: View {
     private var snapshot: ProvenanceSnapshot { model.historical(at: isHistorical ? date : nil) }
     private var cluster: ProvenanceCluster? { snapshot.clusters[clusterID] }
     private var events: [ProvenanceEvent] {
+        // Historical replay is expensive; reuse one snapshot throughout this filter.
+        let snapshot = self.snapshot
         let lineage = model.snapshot.ancestors(of: clusterID)
         return snapshot.events.filter { event in
             guard ![.checkpoint, .enrichment, .processing].contains(event.kind), let payload = try? event.payload() else { return false }

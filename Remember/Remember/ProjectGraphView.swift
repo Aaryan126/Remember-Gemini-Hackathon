@@ -3,102 +3,90 @@ import SwiftUI
 struct ProjectGraphView: View {
     let model: ProjectViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var zoom: CGFloat = 1
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.scenePhase) private var scenePhase
+    @Namespace private var topicTransition
+    @State private var focusedID: UUID?
+    @State private var selectedThreadID: UUID?
+    @State private var isDragging = false
     @State private var pan = CGSize.zero
     @GestureState private var drag = CGSize.zero
-    @GestureState private var magnification: CGFloat = 1
 
     var body: some View {
         let map = ProjectGraphMap(snapshot: model.snapshot)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Your memory map").font(.title2.bold())
-                    Text("\(map.totalCount) threads · \(map.edges.count) connections\(map.totalCount > 40 ? " in view" : "")")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-
-                if map.totalCount == 0 {
-                    ContentUnavailableView("No active threads", systemImage: "circle.dotted",
-                        description: Text("Your memories are still in Memories. Restore a thread from Archive or capture something new."))
-                } else if !dynamicTypeSize.isAccessibilitySize {
-                    graph(map)
-                    Text("Larger circles hold more memories. Tap to open; drag or pinch to explore.")
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Your memory map").font(.title2.bold())
+                Text("\(map.totalCount) threads · \(map.edges.count) connections\(map.totalCount > 40 ? " in view" : "")")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                if map.totalCount > 40 {
+                    Text("Showing 40 threads. Find every thread in Timeline.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-
-                if map.totalCount > 0 {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("All threads").font(.title3.bold())
-                        Text(map.edges.isEmpty
-                            ? "Threads stand on their own for now. Connections appear when they share sources or tags."
-                            : "Lines connect threads with shared sources or overlapping tags.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        if map.totalCount > 40 {
-                            Text("The map shows the first 40 threads. Every thread is available below.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                    LazyVStack(spacing: 10) {
-                        ForEach(model.snapshot.activeClusters) { cluster in
-                            let members = model.snapshot.members(of: cluster.id)
-                            NavigationLink { ClusterRiverView(clusterID: cluster.id, model: model) } label: {
-                                HStack(spacing: 14) {
-                                    Circle().fill(tint(for: cluster.id).opacity(0.7)).frame(width: 12, height: 12)
-                                        .accessibilityHidden(true)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(cluster.title).font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
-                                        Text("\(members.count) \(members.count == 1 ? "memory" : "memories")").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer(minLength: 0)
-                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                                }
-                                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("graph-thread-\(cluster.id)")
-                        }
-                    }
-                }
             }
-            .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 24)
+
+            if map.totalCount == 0 {
+                ContentUnavailableView("No active threads", systemImage: "circle.dotted",
+                    description: Text("Your memories are still in Memories. Restore a thread from Archive or capture something new."))
+            } else {
+                graph(map)
+            }
         }
+        .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(uiColor: .systemGroupedBackground))
         .onChange(of: map.nodes.map(\.id)) { _, _ in
             resetViewport()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { focusedID = nil; isDragging = false }
+        }
+        .sensoryFeedback(.selection, trigger: focusedID) { _, next in next != nil }
+        .navigationDestination(item: $selectedThreadID) { id in
+            if reduceMotion {
+                ClusterRiverView(clusterID: id, model: model)
+            } else {
+                ClusterRiverView(clusterID: id, model: model)
+                    .navigationTransition(.zoom(sourceID: id, in: topicTransition))
+            }
         }
     }
 
     private func graph(_ map: ProjectGraphMap) -> some View {
         GeometryReader { geometry in
             let layout = ProjectGraphLayout(memberCounts: map.nodes.map { $0.members.count })
-            let scale = layout.fitScale(in: geometry.size) * min(4, max(0.7, zoom * magnification))
+            let scale = ProjectGraphLayout.browsingScale(in: geometry.size)
             let offset = ProjectGraphLayout.boundedPan(
                 CGSize(width: pan.width + drag.width, height: pan.height + drag.height),
                 content: layout.size, viewport: geometry.size, scale: scale
             )
+            let projection = ProjectGraphProjection(layout: layout, viewport: geometry.size, scale: scale, pan: offset,
+                focusedIndex: map.nodes.firstIndex { $0.id == focusedID }, reduceMotion: reduceMotion)
             ZStack {
                 RoundedRectangle(cornerRadius: 28).fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .onTapGesture { focus(nil) }
                 RoundedRectangle(cornerRadius: 28)
                     .fill(LinearGradient(colors: [.cyan.opacity(0.08), .clear, .indigo.opacity(0.07)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .allowsHitTesting(false)
                 Canvas { context, size in
                     for x in stride(from: 16.0, to: size.width, by: 22) {
                         for y in stride(from: 16.0, to: size.height, by: 22) {
                             context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 1.5, height: 1.5)), with: .color(.secondary.opacity(0.18)))
                         }
                     }
-                }.accessibilityHidden(true)
+                }.accessibilityHidden(true).allowsHitTesting(false)
                 ZStack(alignment: .topLeading) {
-                    connections(map, layout: layout)
+                    connections(map, projection: projection)
                     ForEach(Array(map.nodes.enumerated()), id: \.element.id) { index, node in
-                        graphNode(node, diameter: layout.diameter(index)).position(layout.position(index))
+                        let pose = projection.nodes[index]
+                        graphNode(node, diameter: layout.diameter(index), related: focusedID.map { map.isConnected($0, to: node.id) } ?? true)
+                            .scaleEffect(pose.scale)
+                            .position(pose.center)
+                            .zIndex(node.id == focusedID ? 1 : 0)
                     }
                 }
-                .frame(width: layout.size.width, height: layout.size.height)
-                .scaleEffect(scale)
-                .position(x: geometry.size.width / 2 + offset.width, y: (geometry.size.height - 40) / 2 + offset.height)
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             .contentShape(Rectangle())
             .highPriorityGesture(DragGesture(minimumDistance: 8)
@@ -106,21 +94,30 @@ struct ProjectGraphView: View {
                     transaction.animation = nil
                     state = value.translation
                 }
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        // Hit-test the original viewport, not the already translated nodes.
+                        let restingPan = ProjectGraphLayout.boundedPan(pan, content: layout.size, viewport: geometry.size, scale: scale)
+                        let initial = ProjectGraphProjection(layout: layout, viewport: geometry.size, scale: scale, pan: restingPan,
+                            focusedIndex: map.nodes.firstIndex { $0.id == focusedID }, reduceMotion: reduceMotion)
+                        focus(initial.hitTest(value.startLocation).map { map.nodes[$0].id })
+                    }
+                }
                 .onEnded { value in
                     pan = ProjectGraphLayout.boundedPan(
                         CGSize(width: pan.width + value.translation.width, height: pan.height + value.translation.height),
                         content: layout.size, viewport: geometry.size, scale: scale
                     )
+                    isDragging = false
                 })
-            .simultaneousGesture(MagnifyGesture()
-                .updating($magnification) { value, state, _ in state = value.magnification }
-                .onEnded { value in zoom = min(4, max(0.7, zoom * value.magnification)) })
             .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 0) {
-                    mapControl("Fit map", symbol: "arrow.up.left.and.arrow.down.right") { resetViewport() }
-                    Divider().frame(height: 18)
-                    mapControl("Zoom out", symbol: "minus") { zoom = max(0.7, zoom / 1.3) }
-                    mapControl("Zoom in", symbol: "plus") { zoom = min(4, zoom * 1.3) }
+                    if focusedID != nil {
+                        mapControl("Clear focus", symbol: "circle.dotted") { focus(nil) }
+                        Divider().frame(height: 18)
+                    }
+                    mapControl("Recenter map", symbol: "scope") { resetViewport() }
                 }
                 .background(.regularMaterial, in: .capsule)
                 .overlay(Capsule().strokeBorder(.primary.opacity(0.06)))
@@ -128,28 +125,48 @@ struct ProjectGraphView: View {
             }
             .clipShape(.rect(cornerRadius: 28))
             .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(.primary.opacity(0.06)))
-        }
-        .frame(height: 460)
-    }
-
-    private func connections(_ map: ProjectGraphMap, layout: ProjectGraphLayout) -> some View {
-        Canvas { context, _ in
-            for edge in map.edges {
-                let start = layout.position(edge.first), end = layout.position(edge.second)
-                var path = Path()
-                path.move(to: start)
-                path.addCurve(to: end,
-                    control1: CGPoint(x: start.x, y: (start.y + end.y) / 2),
-                    control2: CGPoint(x: end.x, y: (start.y + end.y) / 2))
-                context.stroke(path, with: .color(.teal.opacity(0.5)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            .onChange(of: drag) { _, value in
+                if value == .zero { isDragging = false }
             }
-        }.accessibilityHidden(true)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("memory-map-canvas")
+            .accessibilityScrollAction { edge in
+                let step = min(geometry.size.width, geometry.size.height) * 0.6
+                var next = pan
+                switch edge {
+                case .top: next.height += step
+                case .bottom: next.height -= step
+                case .leading: next.width += step
+                case .trailing: next.width -= step
+                default: return
+                }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                    pan = ProjectGraphLayout.boundedPan(next, content: layout.size, viewport: geometry.size, scale: scale)
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
     }
 
-    private func graphNode(_ node: ProjectGraphMap.Node, diameter: CGFloat) -> some View {
+    private func connections(_ map: ProjectGraphMap, projection: ProjectGraphProjection) -> some View {
+        ZStack {
+            ForEach(Array(map.edges.enumerated()), id: \.offset) { _, edge in
+                if let endpoints = projection.endpoints(for: edge) {
+                    let highlighted = focusedID == map.nodes[edge.first].id || focusedID == map.nodes[edge.second].id
+                    GraphConnection(start: endpoints.start, end: endpoints.end)
+                        .stroke(highlighted ? Color.accentColor.opacity(0.8) : Color.secondary.opacity(focusedID == nil ? 0.3 : 0.12),
+                                style: StrokeStyle(lineWidth: highlighted ? 2.5 : 1.25, lineCap: .round))
+                }
+            }
+        }.accessibilityHidden(true).allowsHitTesting(false)
+    }
+
+    private func graphNode(_ node: ProjectGraphMap.Node, diameter: CGFloat, related: Bool) -> some View {
         let color = tint(for: node.id)
-        return NavigationLink {
-            ClusterRiverView(clusterID: node.id, model: model)
+        let focused = focusedID == node.id
+        return Button {
+            focus(node.id)
+            selectedThreadID = node.id
         } label: {
             VStack(spacing: 2) {
                 ForEach(Array(node.titleLines.enumerated()), id: \.offset) { _, line in
@@ -162,20 +179,31 @@ struct ProjectGraphView: View {
                 .frame(width: diameter * 0.74, height: diameter * 0.74)
                 .frame(width: diameter, height: diameter)
                 .background {
-                    Circle().fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        .overlay {
-                            Circle().fill(LinearGradient(colors: [color.opacity(0.18), color.opacity(0.05)],
-                                                        startPoint: .topLeading, endPoint: .bottomTrailing))
-                        }
+                    if reduceTransparency {
+                        Circle().fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    } else {
+                        Circle().fill(.regularMaterial)
+                    }
+                    Circle().fill(LinearGradient(colors: [color.opacity(focused ? 0.24 : 0.12), color.opacity(0.04)],
+                                                startPoint: .topLeading, endPoint: .bottomTrailing))
                 }
-                .overlay(Circle().strokeBorder(color.opacity(0.35), lineWidth: 1))
+                .overlay(Circle().strokeBorder(color.opacity(focused ? 0.75 : related && focusedID != nil ? 0.5 : 0.25), lineWidth: focused ? 1.8 : 1))
+                .overlay(Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.3), .clear], startPoint: .top, endPoint: .bottom), lineWidth: 0.75))
                 .clipShape(Circle())
+                .shadow(color: focused ? color.opacity(0.2) : .black.opacity(0.06), radius: focused ? 12 : 4, y: focused ? 3 : 2)
                 .contentShape(Circle())
+                .matchedTransitionSource(id: node.id, in: topicTransition) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: diameter / 2))
+                }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GraphNodePressStyle { focus(node.id) })
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.3, maximumDistance: 10).onEnded { _ in focus(node.id) })
+        .opacity(related ? 1 : contrast == .increased ? 0.85 : 0.65)
+        .accessibilityAddTraits(focused ? [.isSelected] : [])
         .accessibilityLabel("\(node.cluster.title), \(node.members.count) \(node.members.count == 1 ? "memory" : "memories")")
         .accessibilityValue(Set(node.members.map(\.kind)).count == 1 ? kindLabel(node.members.first?.kind) : "Mixed sources")
-        .accessibilityHint("Opens the thread river and its saved media")
+        .accessibilityHint("Tap to open the river. Hold to highlight connected threads.")
+        .accessibilityAction(named: "Highlight connections") { focus(node.id) }
         .accessibilityIdentifier("graph-node-\(node.id)")
     }
 
@@ -188,7 +216,12 @@ struct ProjectGraphView: View {
         }.buttonStyle(.plain).accessibilityLabel(title)
     }
 
-    private func resetViewport() { zoom = 1; pan = .zero }
+    private func focus(_ id: UUID?) {
+        guard focusedID != id else { return }
+        withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.84)) { focusedID = id }
+    }
+
+    private func resetViewport() { pan = .zero; focusedID = nil; isDragging = false }
 
     private func kindLabel(_ kind: MemoryKind?) -> String {
         switch kind {
@@ -203,7 +236,34 @@ struct ProjectGraphView: View {
     }
 
     private func tint(for id: UUID) -> Color {
-        let colors: [Color] = [.teal, .indigo, .orange, .blue, .purple, .pink]
+        let colors: [Color] = [.teal, .indigo, .blue, .purple]
         return colors[id.uuidString.utf8.reduce(0) { $0 + Int($1) } % colors.count]
+    }
+}
+
+private struct GraphNodePressStyle: ButtonStyle {
+    let onPress: () -> Void
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if pressed { onPress() }
+            }
+    }
+}
+
+/// Interpolates with the moving circles so focus never detaches their connections.
+private struct GraphConnection: Shape {
+    var start: CGPoint
+    var end: CGPoint
+    var animatableData: AnimatablePair<CGPoint.AnimatableData, CGPoint.AnimatableData> {
+        get { AnimatablePair(start.animatableData, end.animatableData) }
+        set { start.animatableData = newValue.first; end.animatableData = newValue.second }
+    }
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: start)
+        path.addCurve(to: end, control1: CGPoint(x: start.x, y: (start.y + end.y) / 2),
+                      control2: CGPoint(x: end.x, y: (start.y + end.y) / 2))
+        return path
     }
 }

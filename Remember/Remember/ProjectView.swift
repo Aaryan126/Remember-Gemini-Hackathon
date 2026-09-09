@@ -45,16 +45,6 @@ struct ProjectView: View {
     private var timeline: some View {
         List {
             Section {
-                ScrollView(.horizontal) {
-                    HStack {
-                        ForEach(model.snapshot.activeClusters) { cluster in
-                            NavigationLink { ClusterRiverView(clusterID: cluster.id, model: model) } label: {
-                                Text(cluster.title).font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 8)
-                                    .background(.tint.opacity(0.1), in: Capsule())
-                            }.buttonStyle(.plain).accessibilityIdentifier("project-topic-\(cluster.id)")
-                        }
-                    }
-                }.scrollIndicators(.hidden)
                 Picker("Source", selection: $kind) {
                     Text("All sources").tag(nil as MemoryKind?)
                     ForEach([MemoryKind.text, .image, .video, .audio, .pdf, .link], id: \.self) { Text($0.rawValue.capitalized).tag(Optional($0)) }
@@ -64,6 +54,27 @@ struct ProjectView: View {
                     Text("All topics").tag(nil as UUID?)
                     ForEach(model.snapshot.activeClusters) { Text($0.title).tag(Optional($0.id)) }
                 }
+            }
+            Section {
+                ForEach(model.snapshot.activeClusters) { cluster in
+                    let count = model.snapshot.members(of: cluster.id).count
+                    NavigationLink { ClusterRiverView(clusterID: cluster.id, model: model) } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(cluster.title).font(.body.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("\(count) \(count == 1 ? "memory" : "memories")")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .accessibilityLabel(cluster.title)
+                    .accessibilityValue("\(count) \(count == 1 ? "memory" : "memories")")
+                    .accessibilityIdentifier("project-topic-\(cluster.id)")
+                }
+            } header: {
+                Text("All threads")
+            } footer: {
+                Text("Open a thread to explore its River. Map connections reflect shared sources or tags.")
             }
             Section("Your history") {
                 ForEach(Array(events.prefix(limit))) { event in

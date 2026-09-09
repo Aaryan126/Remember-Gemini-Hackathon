@@ -89,13 +89,15 @@ nonisolated struct ProjectGraphLayout {
                        y: 14 + pitch / 2 + CGFloat(row) * pitch + (column.isMultiple(of: 2) ? 0 : pitch / 4))
     }
 
-    func fitScale(in viewport: CGSize) -> CGFloat {
-        min(1.15, min(max(1, viewport.width - 24) / size.width, max(1, viewport.height - 64) / size.height))
+    static func browsingScale(in viewport: CGSize) -> CGFloat {
+        // Keep labels readable as the library grows; explore the larger world by panning.
+        min(1, max(0.8, (viewport.width - 24) / 360))
     }
 
     static func boundedPan(_ pan: CGSize, content: CGSize, viewport: CGSize, scale: CGFloat) -> CGSize {
-        let xLimit = max(0, (content.width * scale - viewport.width) / 2) + 60
-        let yLimit = max(0, (content.height * scale - viewport.height) / 2) + 60
+        // Allow even the outermost circles to approach the center's depth/focus region.
+        let xLimit = max(60, content.width * scale / 2 - min(72 * scale, viewport.width / 2))
+        let yLimit = max(60, content.height * scale / 2 - min(72 * scale, viewport.height / 2))
         return CGSize(width: min(xLimit, max(-xLimit, pan.width)), height: min(yLimit, max(-yLimit, pan.height)))
     }
 }
