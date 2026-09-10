@@ -247,6 +247,10 @@ final class RememberUITests: XCTestCase {
         app.buttons["Recenter map"].tap()
         let node = try visibleMapNode(in: app)
         let original = node.frame
+        let caption = app.staticTexts["map-centered-title"]
+        XCTAssertTrue(caption.waitForExistence(timeout: 3))
+        XCTAssertTrue(node.label.hasPrefix(caption.label + ", "), "The caption must expose the centered thread's full title.")
+        let initialCaption = caption.label
         let canvasFrame = app.descendants(matching: .any)["memory-map-canvas"].frame
         let neighbor = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "graph-node-"))
             .allElementsBoundByIndex.first { $0.identifier != node.identifier && canvasFrame.contains($0.frame) }
@@ -299,6 +303,12 @@ final class RememberUITests: XCTestCase {
             lensStart.press(forDuration: 0.1, thenDragTo: lensStart.withOffset(delta),
                             withVelocity: .slow, thenHoldForDuration: 0.2)
             waitForMapCenter(nextNode, at: original)
+            let captionUpdated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                !caption.label.isEmpty && nextNode.label.hasPrefix(caption.label + ", ")
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [captionUpdated], timeout: 3), .completed)
+            XCTAssertEqual(app.descendants(matching: .any)["memory-map-canvas"].frame, canvasFrame,
+                           "Different title lengths must not shift the grid or its fixed center.")
             XCTAssertEqual(nextNode.frame.midX, original.midX, accuracy: 2, "Release must finish centering the nearest occupied slot.")
             XCTAssertEqual(nextNode.frame.midY, original.midY, accuracy: 2)
             XCTAssertTrue(nextNode.isSelected)
@@ -320,6 +330,8 @@ final class RememberUITests: XCTestCase {
         app.buttons["Recenter map"].tap()
         waitForMapCenter(node, at: original)
         XCTAssertEqual(node.frame.width, original.width, accuracy: 2)
+        let captionRestored = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in caption.label == initialCaption }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [captionRestored], timeout: 3), .completed)
 
         // Quick releases exercise the handoff without a stationary hold at the end.
         for delta in [CGVector(dx: 28, dy: -16), CGVector(dx: -25, dy: 18)] {

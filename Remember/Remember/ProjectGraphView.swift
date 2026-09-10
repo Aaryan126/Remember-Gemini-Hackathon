@@ -11,6 +11,8 @@ struct ProjectGraphView: View {
     @State private var focusedID: UUID?
     @State private var selectedThreadID: UUID?
     @State private var previewID: UUID?
+    @State private var centeredID: UUID?
+    @ScaledMetric(relativeTo: .subheadline) private var captionHeight: CGFloat = 44
     @State private var motion = ProjectGraphMotion()
     @GestureState private var dragIsActive = false
 
@@ -31,6 +33,7 @@ struct ProjectGraphView: View {
                 ContentUnavailableView("No active threads", systemImage: "circle.dotted",
                     description: Text("Your memories are still in Memories. Restore a thread from Archive or capture something new."))
             } else {
+                centeredCaption(map)
                 graph(map)
             }
         }
@@ -38,6 +41,7 @@ struct ProjectGraphView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(uiColor: .systemGroupedBackground))
         .onChange(of: map.nodes.map(\.id)) { _, _ in
+            centeredID = nil
             resetViewport()
         }
         .sensoryFeedback(.selection, trigger: focusedID) { _, next in next != nil }
@@ -49,6 +53,24 @@ struct ProjectGraphView: View {
                     .navigationTransition(.zoom(sourceID: id, in: topicTransition))
             }
         }
+    }
+
+    private func centeredCaption(_ map: ProjectGraphMap) -> some View {
+        let node = map.nodes.first { $0.id == centeredID }
+            ?? map.nodes.max { $0.members.count < $1.members.count }
+        // Reserve the same space for every title. Unusually long titles remain
+        // readable by scrolling the caption, without shrinking/repositioning the map.
+        return ScrollView(.vertical) {
+            Text(node?.cluster.title ?? "")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary.opacity(0.8))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("map-centered-title")
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: captionHeight, alignment: .top)
+        .id(node?.id)
     }
 
     private func graph(_ map: ProjectGraphMap) -> some View {
@@ -70,6 +92,7 @@ struct ProjectGraphView: View {
                     ForEach(Array(map.nodes.enumerated()), id: \.element.id) { index, node in
                         let pose = projection.nodes[index]
                         graphNode(node, diameter: layout.diameter(index), prominence: pose.prominence,
+                                  lighting: ProjectGraphLighting(center: pose.center, viewport: geometry.size, reduceMotion: reduceMotion),
                                   related: focusedID.map { map.isConnected($0, to: node.id) } ?? true)
                             .scaleEffect(pose.scale)
                             .position(pose.center)
@@ -123,6 +146,11 @@ struct ProjectGraphView: View {
                     settleMap(at: motion.position, layout: layout, scale: scale, map: map)
                 }
             }
+            .onChange(of: motion.isSettling) { _, settling in
+                if !settling && !motion.isDragging {
+                    centeredID = layout.snapTarget(for: motion.position, scale: scale).map { map.nodes[$0.index].id }
+                }
+            }
             .onChange(of: geometry.size) { _, _ in
                 settleMap(at: motion.position, layout: layout, scale: scale, map: map)
             }
@@ -167,6 +195,7 @@ struct ProjectGraphView: View {
     private func settleMap(at offset: CGSize, layout: ProjectGraphLayout, scale: CGFloat, map: ProjectGraphMap) {
         guard let target = layout.snapTarget(for: offset, scale: scale) else { return }
         motion.settle(to: target.pan, animated: !reduceMotion)
+        if !motion.isSettling { centeredID = map.nodes[target.index].id }
         focus(map.nodes[target.index].id)
     }
 
@@ -183,40 +212,28 @@ struct ProjectGraphView: View {
         }.accessibilityHidden(true).allowsHitTesting(false)
     }
 
-    private func graphNode(_ node: ProjectGraphMap.Node, diameter: CGFloat, prominence: CGFloat, related: Bool) -> some View {
+    private func graphNode(_ node: ProjectGraphMap.Node, diameter: CGFloat, prominence: CGFloat,
+                           lighting: ProjectGraphLighting, related: Bool) -> some View {
         let focused = focusedID == node.id
+        let fittedSize = labelFontSize(node.titleLines, diameter: diameter)
+        // A single enormous token must not turn into microscopic text. The exact
+        // title is still available in the centered caption and accessibility label.
+        let label = fittedSize >= 11 ? node.titleLines.joined(separator: "\n") : "Open\nthread"
         return Button {
             openRiver(node.id)
         } label: {
-            VStack(spacing: 2) {
-                ForEach(Array(node.titleLines.enumerated()), id: \.offset) { _, line in
-                    Text(line).lineLimit(1).minimumScaleFactor(0.55)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-                .font(.system(size: 18, weight: .semibold))
+            Text(label)
+                .font(.system(size: fittedSize >= 11 ? fittedSize : 18, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .fixedSize()
                 .foregroundStyle(.primary)
-                .frame(width: diameter * 0.74, height: diameter * 0.74)
+                .frame(width: diameter * 0.78, height: diameter * 0.74)
                 .frame(width: diameter, height: diameter)
                 .background {
-                    if reduceTransparency {
-                        Circle().fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    } else {
-                        Circle().fill(.regularMaterial)
-                    }
-                    Circle().fill(LinearGradient(colors: [silver.opacity(focused ? 0.30 : 0.12 + prominence * 0.1),
-                                                         Color.gray.opacity(0.10), silver.opacity(0.06)],
-                                                startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Circle().fill(RadialGradient(colors: [.white.opacity(focused ? 0.48 : 0.16 + prominence * 0.15),
-                                                          .white.opacity(0.02), .clear],
-                                                center: UnitPoint(x: 0.22, y: 0.12), startRadius: 0, endRadius: diameter * 0.85))
+                    ProjectGraphNodeSurface(diameter: diameter, prominence: prominence, focused: focused, lighting: lighting)
                 }
-                .overlay(Circle().strokeBorder(silver.opacity(focused ? 0.8 : contrast == .increased ? 0.7 : 0.28), lineWidth: focused ? 1.5 : 1))
-                .overlay(Circle().strokeBorder(LinearGradient(colors: [.white.opacity(focused ? 0.95 : 0.65),
-                                                                      silver.opacity(0.06), silver.opacity(0.40)],
-                                                             startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
                 .clipShape(Circle())
-                .shadow(color: focused ? silver.opacity(0.22) : .black.opacity(0.10), radius: focused ? 16 : 8, y: focused ? 0 : 5)
+                .shadow(color: .black.opacity(focused ? 0.14 : 0.08), radius: focused ? 10 : 6, y: 3)
                 .contentShape(Circle())
                 .matchedTransitionSource(id: node.id, in: topicTransition) { source in
                     source.clipShape(RoundedRectangle(cornerRadius: diameter / 2))
@@ -235,6 +252,13 @@ struct ProjectGraphView: View {
         .accessibilityAction(named: "Highlight connections") { focus(node.id) }
         .accessibilityAction(named: "Preview thread") { focus(node.id); previewID = node.id }
         .accessibilityIdentifier("graph-node-\(node.id)")
+    }
+
+    private func labelFontSize(_ lines: [String], diameter: CGFloat) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        let widest = lines.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 1
+        // Fit the whole label uniformly, rather than making each line a different size.
+        return 18 * min(1, diameter * 0.78 / max(1, widest), diameter * 0.74 / max(1, CGFloat(lines.count) * font.lineHeight))
     }
 
     private func focusPreview(_ node: ProjectGraphMap.Node, map: ProjectGraphMap) -> some View {

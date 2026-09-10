@@ -9,24 +9,8 @@ nonisolated struct ProjectGraphMap {
         var id: UUID { cluster.id }
         var sourceIDs: Set<UUID> { Set(members.map(\.id)) }
         var tags: Set<String> { Set(members.flatMap(\.tags).map { $0.lowercased() }) }
-        var shortTitle: String {
-            let words = cluster.title.split(whereSeparator: \.isWhitespace)
-            let shortened = words.prefix(5).joined(separator: " ")
-            return String(shortened.prefix(44)) + (words.count > 5 || shortened.count > 44 ? "…" : "")
-        }
-        /// Keep long words on one line; the view scales that line instead of
-        /// splitting a word such as "Entrepreneurship" across the circle.
-        var titleLines: [String] {
-            var lines: [String] = []
-            for word in shortTitle.split(separator: " ") {
-                if let last = lines.last, last.count + word.count + 1 <= 14 {
-                    lines[lines.count - 1] += " " + word
-                } else {
-                    lines.append(String(word))
-                }
-            }
-            return lines.count > 4 ? Array(lines.prefix(3)) + [lines.dropFirst(3).joined(separator: " ")] : lines
-        }
+        var shortTitle: String { ProjectGraphLabel(title: cluster.title).text }
+        var titleLines: [String] { ProjectGraphLabel(title: cluster.title).lines }
     }
 
     struct Edge: Equatable {

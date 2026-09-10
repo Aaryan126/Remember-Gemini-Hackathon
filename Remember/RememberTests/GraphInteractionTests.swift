@@ -4,6 +4,58 @@ import Testing
 @testable import Remember
 
 struct GraphInteractionTests {
+    @Test func nodeLightMovesSubtlyWithPositionAndNeverAnimatesAtRest() {
+        let viewport = CGSize(width: 370, height: 600)
+        let center = CGPoint(x: 185, y: 280)
+        let resting = ProjectGraphLighting(center: center, viewport: viewport, reduceMotion: false)
+        #expect(resting.highlightOrigin == CGPoint(x: 0.30, y: 0.18))
+        #expect(resting == ProjectGraphLighting(center: center, viewport: viewport, reduceMotion: false))
+        var previous = resting
+        for offset in stride(from: CGFloat(1), through: 600, by: 1) {
+            let next = ProjectGraphLighting(center: CGPoint(x: center.x + offset, y: center.y), viewport: viewport, reduceMotion: false)
+            #expect(next.highlightOrigin.x < previous.highlightOrigin.x)
+            #expect(abs(next.highlightOrigin.x - previous.highlightOrigin.x) < 0.001)
+            #expect(abs(next.rimAngle - previous.rimAngle) < 0.1)
+            previous = next
+        }
+        #expect(previous.highlightOrigin.x >= 0.235)
+        #expect(previous.rimAngle <= -113)
+    }
+
+    @Test func nodeLightIsBoundedAndReduceMotionKeepsItStatic() {
+        let viewport = CGSize(width: 370, height: 600)
+        let staticLight = ProjectGraphLighting(center: .zero, viewport: viewport, reduceMotion: true)
+        for point in [CGPoint.zero, CGPoint(x: -10000, y: 10000), CGPoint(x: 10000, y: -10000)] {
+            let light = ProjectGraphLighting(center: point, viewport: viewport, reduceMotion: false)
+            #expect(light.highlightOrigin.x >= 0.235 && light.highlightOrigin.x <= 0.365)
+            #expect(light.highlightOrigin.y >= 0.135 && light.highlightOrigin.y <= 0.225)
+            #expect(light.rimAngle >= -145 && light.rimAngle <= -105)
+            #expect(ProjectGraphLighting(center: point, viewport: viewport, reduceMotion: true) == staticLight)
+        }
+        #expect(ProjectGraphLighting(center: CGPoint(x: CGFloat.nan, y: 0), viewport: .zero, reduceMotion: false) == staticLight)
+    }
+
+    @Test @MainActor func nodeLightSettlesOnTheSameFramesAsTheGrid() {
+        let viewport = CGSize(width: 370, height: 600)
+        let motion = ProjectGraphMotion()
+        motion.beginDrag()
+        motion.drag(translation: CGSize(width: 60, height: -30), layout: ProjectGraphLayout(count: 7), viewport: viewport, scale: 1)
+        motion.settle(to: .zero, animated: true)
+        let lightAtCurrentPosition = {
+            ProjectGraphLighting(center: CGPoint(x: 185 + motion.position.width, y: 280 + motion.position.height),
+                                 viewport: viewport, reduceMotion: false)
+        }
+        let release = lightAtCurrentPosition()
+        motion.advance(by: ProjectGraphMotion.duration / 2)
+        let middle = lightAtCurrentPosition()
+        motion.advance(by: ProjectGraphMotion.duration / 2)
+        let end = lightAtCurrentPosition()
+        #expect(release != middle && middle != end)
+        #expect(end == ProjectGraphLighting(center: CGPoint(x: 185, y: 280), viewport: viewport, reduceMotion: false))
+        motion.advance(by: 2)
+        #expect(lightAtCurrentPosition() == end)
+    }
+
     @Test @MainActor func snapAnimationStartsAtReleaseAndEasesEveryFrame() {
         let layout = ProjectGraphLayout(count: 7)
         for release in [CGSize(width: 35, height: 18), CGSize(width: -65, height: 90), CGSize(width: 10, height: -8)] {
@@ -422,16 +474,36 @@ struct GraphInteractionTests {
         snapshot.clusters[id]?.title = title
         let node = ProjectGraphMap(snapshot: snapshot).nodes[0]
         #expect(node.cluster.title == title)
-        #expect(node.shortTitle == "One two three four five…")
+        #expect(node.shortTitle == "One two seven")
         #expect(node.titleLines.joined(separator: " ") == node.shortTitle)
         snapshot.clusters[id]?.title = "Digital Entrepreneurship Class Important Dates"
         let longWord = ProjectGraphMap(snapshot: snapshot).nodes[0]
+        #expect(longWord.shortTitle == "Digital Entrepreneurship Dates")
         #expect(longWord.titleLines.contains("Entrepreneurship"))
-        #expect(longWord.titleLines.count <= 4)
+        #expect(longWord.titleLines.count <= 3)
         snapshot.clusters[id]?.title = "abcdefgh abcdefgh abcdefgh abcdefgh abcdefgh"
         let fiveWords = ProjectGraphMap(snapshot: snapshot).nodes[0]
-        #expect(fiveWords.titleLines.count <= 4)
+        #expect(fiveWords.titleLines.count <= 3)
         #expect(fiveWords.titleLines.joined(separator: " ") == fiveWords.shortTitle)
+    }
+
+    @Test func compactMapLabelsKeepQualifiersAndNeverCutWords() {
+        #expect(ProjectGraphLabel(title: "Digital Entrepreneurship Class Important Dates").text == "Digital Entrepreneurship Dates")
+        #expect(ProjectGraphLabel(title: "Digital Entrepreneurship Class Important Assignments").text == "Digital Entrepreneurship Assignments")
+        #expect(ProjectGraphLabel(title: "Best Use of Gemma for Gemini Hackathon").text == "Gemma Gemini Hackathon")
+        #expect(ProjectGraphLabel(title: "Application Submission Confirmation").text == "Application Submission Confirmation")
+        #expect(ProjectGraphLabel(title: "  My\n travel  plans ").text == "My travel plans")
+        #expect(ProjectGraphLabel(title: "").text == "Untitled thread")
+        #expect(ProjectGraphLabel(title: "研究計画").text == "研究計画")
+        let longWord = "Supercalifragilisticexpialidocious"
+        #expect(ProjectGraphLabel(title: longWord).text == longWord)
+        for title in ["one two three four five", "Greeting and Recording Intent", "Judging Criteria for Hackathon"] {
+            let label = ProjectGraphLabel(title: title)
+            #expect(label.words.count <= 3)
+            #expect(label.lines.count <= 3)
+            #expect(!label.text.contains("…"))
+            #expect(label.words.allSatisfy { title.split(separator: " ").contains(Substring($0)) })
+        }
     }
 
     @Test func mapPanIsBoundedAndResetIsCentered() {
