@@ -17,10 +17,10 @@ struct LocalImageView: View {
                     .aspectRatio(contentMode: contentMode)
             } else {
                 ZStack {
-                    Color.secondary.opacity(0.12)
+                    RememberPalette.inset
                     Image(systemName: "photo")
                         .font(.title2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                 }
             }
         }

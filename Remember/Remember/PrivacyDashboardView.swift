@@ -9,13 +9,13 @@ struct PrivacyDashboardView: View {
                     VStack(spacing: 14) {
                         Image(systemName: "lock.shield.fill")
                             .font(.system(size: 46))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(RememberPalette.secondaryText)
                             .accessibilityHidden(true)
                         Text("Local vault, explicit AI boundary")
                             .font(.title2.bold())
                         Text(RememberNetworkPolicy.summary)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RememberPalette.secondaryText)
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
@@ -27,35 +27,35 @@ struct PrivacyDashboardView: View {
                         title: "Outbound app features",
                         value: RememberNetworkPolicy.outboundRequestsImplemented ? "OpenAI proxy" : "None",
                         systemImage: "network",
-                        color: .blue
+                        color: RememberPalette.secondaryText
                     )
                     PrivacyStatusRow(
                         title: "AI processing",
                         value: aiProcessingStatus,
                         systemImage: "cloud",
-                        color: viewModel.aiAvailability.isAvailable ? .green : .orange
+                        color: viewModel.aiAvailability.isAvailable ? RememberPalette.success : RememberPalette.warning
                     )
                     PrivacyStatusRow(
                         title: "Model weights",
                         value: "No bundled model weights",
                         systemImage: "internaldrive",
-                        color: .green
+                        color: RememberPalette.secondaryText
                     )
                     PrivacyStatusRow(
                         title: "Account or cloud sync",
                         value: "None",
                         systemImage: "person.crop.circle.badge.xmark",
-                        color: .green
+                        color: RememberPalette.secondaryText
                     )
                 }
 
                 Section("What this proves") {
                     Text(RememberNetworkPolicy.limitation)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                     Text("The activity log stores operation metadata only. It does not store your prompts, OCR text, images, or generated answers.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                 }
 
                 Section {
@@ -76,6 +76,7 @@ struct PrivacyDashboardView: View {
                     Text("Newest first · stored only in Remember's protected SQLite database")
                 }
         }
+        .rememberGroupedList()
         .navigationTitle("Privacy & AI")
         .refreshable {
             await viewModel.refreshActivities()
@@ -106,7 +107,9 @@ private struct PrivacyStatusRow: View {
                 .foregroundStyle(color)
                 .fontWeight(.semibold)
         } label: {
-            Label(title, systemImage: systemImage)
+            Label { Text(title) } icon: {
+                Image(systemName: systemImage).foregroundStyle(RememberPalette.secondaryText)
+            }
         }
     }
 }
@@ -130,7 +133,7 @@ private struct ActivityRow: View {
                 }
                 Text(activity.startedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
                 HStack(spacing: 6) {
                     Text(activity.modelVersion)
                     if activity.sourceCount > 0 {
@@ -138,7 +141,7 @@ private struct ActivityRow: View {
                     }
                 }
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(RememberPalette.secondaryText)
                 .lineLimit(2)
             }
         }
@@ -147,9 +150,9 @@ private struct ActivityRow: View {
 
     private var statusColor: Color {
         switch activity.status {
-        case .running: .blue
-        case .completed: .green
-        case .failed: .orange
+        case .running: RememberPalette.action
+        case .completed: RememberPalette.success
+        case .failed: RememberPalette.warning
         case .interrupted: .secondary
         }
     }

@@ -32,13 +32,19 @@ struct ProjectGraphNodeSurface: View {
 
     var body: some View {
         ZStack {
-            if reduceTransparency {
+            if !dark {
+                // An opaque pearl base gives the light map a clear silhouette and
+                // dependable text contrast; only the lighting moves above it.
+                Circle().fill(RememberPalette.surface)
+                Circle().fill(LinearGradient(colors: [.clear, RememberPalette.mapShade.opacity(focused ? 0.32 : 0.62)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+            } else if reduceTransparency {
                 Circle().fill(Color(uiColor: .secondarySystemGroupedBackground))
             } else {
                 Circle().fill(.regularMaterial)
                 Circle().fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(dark ? 0.50 : 0.38))
             }
-            Circle().fill(silver.opacity(0.015 + prominence * 0.035 + (focused ? 0.02 : 0)))
+            if dark { Circle().fill(silver.opacity(0.015 + prominence * 0.035 + (focused ? 0.02 : 0))) }
             Circle().fill(LinearGradient(colors: [.white.opacity(dark ? 0.035 : 0.12),
                                                   .black.opacity(dark ? 0.04 : 0.015)],
                                          startPoint: .top, endPoint: .bottom))
@@ -49,9 +55,10 @@ struct ProjectGraphNodeSurface: View {
             if contrast == .increased {
                 Circle().strokeBorder(.primary.opacity(0.65), lineWidth: focused ? 2 : 1.5)
             } else {
-                let edge = Color.primary.opacity(dark ? (focused ? 0.28 : 0.10) : (focused ? 0.28 : 0.14))
+                let edge = dark ? Color.primary.opacity(focused ? 0.28 : 0.10)
+                                : silver.opacity(focused ? 0.52 : 0.20)
                 let reflection = dark ? Color.white.opacity(0.23 + prominence * 0.09 + (focused ? 0.13 : 0))
-                                      : silver.opacity(focused ? 0.48 : 0.30)
+                                      : Color.white.opacity(0.95)
                 Circle().strokeBorder(AngularGradient(stops: [
                     .init(color: edge, location: 0),
                     .init(color: reflection, location: 0.16),

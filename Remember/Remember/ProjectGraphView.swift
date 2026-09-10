@@ -22,10 +22,10 @@ struct ProjectGraphView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Your memory map").font(.title2.bold())
                 Text("\(map.totalCount) threads · \(map.edges.count) connections\(map.totalCount > 40 ? " in view" : "")")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(RememberPalette.secondaryText)
                 if map.totalCount > 40 {
                     Text("Showing 40 threads. Find every thread in Timeline.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(RememberPalette.secondaryText)
                 }
             }
 
@@ -39,7 +39,7 @@ struct ProjectGraphView: View {
         }
         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .rememberCanvas()
         .onChange(of: map.nodes.map(\.id)) { _, _ in
             centeredID = nil
             resetViewport()
@@ -81,10 +81,10 @@ struct ProjectGraphView: View {
             let projection = ProjectGraphProjection(layout: layout, viewport: geometry.size, scale: scale, pan: offset,
                 focusedIndex: map.nodes.firstIndex { $0.id == focusedID }, reduceMotion: reduceMotion)
             ZStack {
-                RoundedRectangle(cornerRadius: 28).fill(Color(uiColor: .systemBackground))
+                RoundedRectangle(cornerRadius: 28).fill(RememberPalette.mapCanvas)
                     .onTapGesture { focus(nil) }
                 RoundedRectangle(cornerRadius: 28)
-                    .fill(RadialGradient(colors: [silver.opacity(colorScheme == .dark ? 0.10 : 0.08), .clear],
+                    .fill(RadialGradient(colors: [colorScheme == .dark ? silver.opacity(0.10) : .white.opacity(0.65), .clear],
                                          center: .center, startRadius: 20, endRadius: geometry.size.height * 0.6))
                     .allowsHitTesting(false)
                 ZStack(alignment: .topLeading) {
@@ -233,7 +233,8 @@ struct ProjectGraphView: View {
                     ProjectGraphNodeSurface(diameter: diameter, prominence: prominence, focused: focused, lighting: lighting)
                 }
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(focused ? 0.14 : 0.08), radius: focused ? 10 : 6, y: 3)
+                .shadow(color: .black.opacity(colorScheme == .dark ? (focused ? 0.14 : 0.08) : (focused ? 0.10 : 0.045)),
+                        radius: focused ? 10 : 6, y: colorScheme == .dark ? 3 : 5)
                 .contentShape(Circle())
                 .matchedTransitionSource(id: node.id, in: topicTransition) { source in
                     source.clipShape(RoundedRectangle(cornerRadius: diameter / 2))
@@ -268,21 +269,25 @@ struct ProjectGraphView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(node.cluster.title).font(.headline).lineLimit(2)
                     Text("\(node.members.count) \(node.members.count == 1 ? "memory" : "memories") · \(related) related threads")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(RememberPalette.secondaryText)
                     if !node.tags.isEmpty {
                         Text(node.tags.sorted().prefix(3).joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            .font(.caption).foregroundStyle(RememberPalette.secondaryText).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.subheadline.weight(.semibold)).foregroundStyle(RememberPalette.secondaryText)
             }
             .padding(18).frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 if reduceTransparency { RoundedRectangle(cornerRadius: 24).fill(Color(uiColor: .secondarySystemGroupedBackground)) }
-                else { RoundedRectangle(cornerRadius: 24).fill(.regularMaterial) }
+                else {
+                    RoundedRectangle(cornerRadius: 24).fill(.regularMaterial)
+                    if colorScheme == .light { RoundedRectangle(cornerRadius: 24).fill(.white.opacity(0.72)) }
+                }
             }
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(silver.opacity(0.25)))
+            .shadow(color: .black.opacity(colorScheme == .light ? 0.06 : 0), radius: 14, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 24))
         }
         .buttonStyle(.plain)

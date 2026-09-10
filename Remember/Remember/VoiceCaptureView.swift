@@ -15,7 +15,7 @@ struct VoiceCaptureView: View {
 
                 Image(systemName: recorder.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 88))
-                    .foregroundStyle(recorder.isRecording ? .red : .accentColor)
+                    .foregroundStyle(recorder.isRecording ? RememberPalette.danger : RememberPalette.action)
                     .symbolEffect(.pulse, isActive: recorder.isRecording)
                     .accessibilityHidden(true)
 
@@ -24,7 +24,7 @@ struct VoiceCaptureView: View {
                         .font(.title2.bold())
                     Text(statusMessage)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                         .multilineTextAlignment(.center)
                 }
 
@@ -55,7 +55,7 @@ struct VoiceCaptureView: View {
                 if case .failed(let message) = recorder.state {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(RememberPalette.warning)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
@@ -64,9 +64,10 @@ struct VoiceCaptureView: View {
 
                 Label("Audio stays local; its transcript may be analyzed by OpenAI", systemImage: "lock.fill")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(RememberPalette.secondaryText)
             }
             .padding(24)
+            .rememberCanvas(dark: .systemBackground)
             .navigationTitle("Voice Memory")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -119,7 +120,7 @@ struct VoiceCaptureView: View {
                     .frame(minWidth: 180)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .tint(RememberPalette.danger)
             .controlSize(.large)
         } else {
             Button {

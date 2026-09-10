@@ -88,7 +88,7 @@ struct LocalVideoPlayerView: View {
             .clipShape(.rect(cornerRadius: 16))
             if let failure {
                 Label(failure, systemImage: "exclamationmark.triangle")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(RememberPalette.secondaryText)
             }
         }
         .task(id: wantsPlayback) {

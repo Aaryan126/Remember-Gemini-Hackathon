@@ -4,6 +4,7 @@ Remember is an iPhone memory vault for notes, images, videos, links, PDFs, and v
 
 ## Current product surface
 
+- Light Mode uses a shared neutral canvas, white content cards, graphite metadata, and a deeper blue action color. Reading/writing surfaces remain near-white; the map uses a silver-gray field and pearl circles. Native bars, menus, pickers, and playback controls keep their system materials. Status colors carry meaning, with darker text-safe light variants and Increased Contrast support. See [the screen-by-screen appearance review](docs/appearance.md).
 - Capture content in the app or through the Share Extension.
 - Keep original files and metadata in the local vault.
 - Import photos or videos through the system Photos picker, preview, add a caption, and save. Video imports also work from Files. Native inline video controls support playback and scrubbing; playback is user-initiated and pauses on leaving/backgrounding. Videos are stored locally; only captions are indexed, not scenes or video speech. Photos-picker iCloud downloads require connectivity.

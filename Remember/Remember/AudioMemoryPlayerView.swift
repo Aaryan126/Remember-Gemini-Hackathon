@@ -28,11 +28,11 @@ struct AudioMemoryPlayerView: View {
             Spacer()
             Image(systemName: "waveform")
                 .font(.title2)
-                .foregroundStyle(.tint)
+                .foregroundStyle(RememberPalette.secondaryText)
                 .accessibilityHidden(true)
         }
         .padding()
-        .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 20))
+        .rememberCard(radius: 20, dark: Color.accentColor.opacity(0.1))
         .onDisappear { player.stop() }
         .onChange(of: url) { _, _ in player.stop() }
         .onChange(of: scenePhase) { _, phase in
@@ -43,7 +43,7 @@ struct AudioMemoryPlayerView: View {
     private var recordingLabel: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Voice memory").font(.headline)
-            Text(player.statusText).font(.caption).foregroundStyle(.secondary)
+            Text(player.statusText).font(.caption).foregroundStyle(RememberPalette.secondaryText)
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .contentShape(Rectangle())

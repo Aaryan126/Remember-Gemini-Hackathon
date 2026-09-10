@@ -28,9 +28,9 @@ struct ProvenanceEventRow: View {
                 Text(displayMemory?.displayTitle ?? payload?.memory?.displayTitle ?? payload?.title ?? event.kind.label).font(.headline).lineLimit(2)
                     .modifier(RiverTitleJunction(kind: event.kind, isVisible: showsRiverJunction))
                 Text(event.kind.label + " · " + event.timestamp.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(RememberPalette.secondaryText)
                 if let rationale = payload?.rationale, !rationale.isEmpty, rationale != event.kind.label {
-                    Text(rationale).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    Text(rationale).font(.subheadline).foregroundStyle(RememberPalette.secondaryText).lineLimit(2)
                 }
             }
         }.padding(.vertical, 5)
@@ -70,7 +70,7 @@ struct ClusterRiverView: View {
         List {
             Section {
                 Text(cluster?.title ?? "This thread had not formed yet").font(.largeTitle.bold())
-                Text("\(snapshot.members(of: clusterID).count) \(snapshot.members(of: clusterID).count == 1 ? "memory" : "memories") · a traceable history").foregroundStyle(.secondary)
+                Text("\(snapshot.members(of: clusterID).count) \(snapshot.members(of: clusterID).count == 1 ? "memory" : "memories") · a traceable history").foregroundStyle(RememberPalette.secondaryText)
                 Toggle("Travel through time", isOn: $isHistorical)
                 if isHistorical {
                     DatePicker("As of", selection: $date, in: ...Date())
@@ -110,7 +110,7 @@ struct ClusterRiverView: View {
                                             Text((event.kind == .revision ? "Revised · " : "") +
                                                  (event.kind == .revision ? event.timestamp : original.createdAt)
                                                     .formatted(date: .abbreviated, time: .shortened))
-                                                .font(.caption).foregroundStyle(.secondary)
+                                                .font(.caption).foregroundStyle(RememberPalette.secondaryText)
                                         }
                                         Spacer(minLength: 0)
                                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
@@ -138,7 +138,7 @@ struct ClusterRiverView: View {
                     .listRowBackground(RiverStreamMark())
                 }
             }
-        }.listStyle(.insetGrouped).listRowSpacing(0)
+        }.rememberGroupedList().listRowSpacing(0)
             .navigationTitle("Thread history").navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $showsMemory) {
                 if let selectedMemory {
@@ -152,6 +152,7 @@ struct ClusterRiverView: View {
                         Button("Delete thread…", systemImage: "trash", role: .destructive) { showsDelete = true }
                     } label: {
                         Image(systemName: "ellipsis").rotationEffect(.degrees(90))
+                            .foregroundStyle(.primary)
                             .frame(width: 28, height: 28)
                     }
                     .accessibilityLabel("Thread options")
@@ -195,7 +196,7 @@ struct ClusterRiverView: View {
         return VStack(alignment: .leading, spacing: 4) {
             Text("Since this moment: +\(added) sources, −\(removed) sources, \(revised) revised.")
             if cluster?.title != model.snapshot.clusters[clusterID]?.title { Text("Now named \(model.snapshot.clusters[clusterID]?.title ?? "Unknown")") }
-        }.font(.footnote).foregroundStyle(.secondary)
+        }.font(.footnote).foregroundStyle(RememberPalette.secondaryText)
     }
 }
 
@@ -252,11 +253,12 @@ struct ProvenanceEventView: View {
                     Button("Undo this change") { Task { await model.undo(event) } }
                 }
             }
-        }.navigationTitle(event.kind.label).safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
+        }.rememberGroupedList().navigationTitle(event.kind.label).safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
     }
 }
 
 private struct RiverStreamMark: View {
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         ZStack {
             Color(uiColor: .secondarySystemGroupedBackground)
@@ -267,7 +269,7 @@ private struct RiverStreamMark: View {
                 var trunk = Path()
                 trunk.move(to: CGPoint(x: x, y: 0))
                 trunk.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(trunk, with: .color(.accentColor.opacity(0.45)), lineWidth: 2)
+                context.stroke(trunk, with: .color(scheme == .dark ? .accentColor.opacity(0.45) : RememberPalette.rule), lineWidth: 2)
             }
         }.accessibilityHidden(true).allowsHitTesting(false)
     }
@@ -276,6 +278,7 @@ private struct RiverStreamMark: View {
 private struct RiverTitleJunction: ViewModifier {
     let kind: ProvenanceKind
     var isVisible = true
+    @Environment(\.colorScheme) private var scheme
     @ScaledMetric(relativeTo: .headline) private var capHeight = UIFont.preferredFont(
         forTextStyle: .headline,
         compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
@@ -290,17 +293,17 @@ private struct RiverTitleJunction: ViewModifier {
                     var branch = Path()
                     branch.move(to: CGPoint(x: x, y: junction))
                     branch.addLine(to: CGPoint(x: 24, y: junction))
-                    context.stroke(branch, with: .color(.accentColor.opacity(0.3)), lineWidth: 2)
+                    context.stroke(branch, with: .color(scheme == .dark ? .accentColor.opacity(0.3) : RememberPalette.rule), lineWidth: 2)
                     if kind == .merge {
                         var tributary = Path()
                         tributary.move(to: CGPoint(x: 22, y: 0))
                         tributary.addCurve(to: CGPoint(x: x, y: junction),
                             control1: CGPoint(x: 22, y: 10), control2: CGPoint(x: x, y: 10))
-                        context.stroke(tributary, with: .color(.accentColor), lineWidth: 2)
+                        context.stroke(tributary, with: .color(RememberPalette.action), lineWidth: 2)
                     }
                     let diameter: CGFloat = kind == .merge ? 12 : 8
                     context.fill(Path(ellipseIn: CGRect(x: x - diameter / 2, y: junction - diameter / 2,
-                                                       width: diameter, height: diameter)), with: .color(.accentColor))
+                                                       width: diameter, height: diameter)), with: .color(RememberPalette.action))
                 }
                 .frame(width: 24, height: 24)
                 // The first baseline is measured from the actual title, even
@@ -345,11 +348,11 @@ struct ProjectSourceView: View {
                     }
                     Button("Save topic correction") { Task { await model.assign(memory.id, clusters: selected) } }
                     Text("Choose several topics, or clear all to start a separate thread. Your choice is preserved during automatic organization.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(RememberPalette.secondaryText)
                 }
                 Button("Archive memory") { Task { await model.archive(memory.id, archived: true) } }
             }
-        }.navigationTitle(historical ? "Saved revision" : "Memory").quickLookPreview($preview)
+        }.rememberGroupedList().navigationTitle(historical ? "Saved revision" : "Memory").quickLookPreview($preview)
             .onAppear { selected = model.snapshot.memberships[memory.id, default: []].subtracting(model.snapshot.archivedClusterIDs) }
             .safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
     }
@@ -359,7 +362,7 @@ struct ProjectArchiveView: View {
     let model: ProjectViewModel
     var body: some View {
         List {
-            Section { Text("Restore deleted threads or archived memories here. Their originals and history stay on this device.").font(.subheadline).foregroundStyle(.secondary) }
+            Section { Text("Restore deleted threads or archived memories here. Their originals and history stay on this device.").font(.subheadline).foregroundStyle(RememberPalette.secondaryText) }
             if !model.snapshot.archivedClusters.isEmpty {
                 Section("Threads") {
                     ForEach(model.snapshot.archivedClusters) { cluster in
@@ -380,6 +383,6 @@ struct ProjectArchiveView: View {
                         .accessibilityLabel("Restore \(memory.displayTitle)")
                 }
             }
-        }.navigationTitle("Archive").safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
+        }.rememberGroupedList().navigationTitle("Archive").safeAreaInset(edge: .bottom) { ProjectStatusView(model: model) }
     }
 }

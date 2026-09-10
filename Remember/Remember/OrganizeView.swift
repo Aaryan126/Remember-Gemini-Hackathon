@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OrganizeView: View {
     let viewModel: LibraryViewModel
+    @Environment(\.colorScheme) private var scheme
 
     @State private var editor: OrganizationEditor?
     @State private var deletion: OrganizationDeletion?
@@ -11,7 +12,7 @@ struct OrganizeView: View {
                 Section {
                     if viewModel.collections.isEmpty {
                         Text("Create a collection to group related memories without moving or duplicating them.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RememberPalette.secondaryText)
                     } else {
                         ForEach(viewModel.collections) { summary in
                             NavigationLink {
@@ -24,7 +25,7 @@ struct OrganizeView: View {
                                     )
                                 } icon: {
                                     Image(systemName: "folder.fill")
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(scheme == .light ? RememberPalette.secondaryText : .blue)
                                 }
                             }
                             .swipeActions(edge: .trailing) {
@@ -34,7 +35,7 @@ struct OrganizeView: View {
                                 Button("Rename", systemImage: "pencil") {
                                     editor = .renameCollection(summary)
                                 }
-                                .tint(.blue)
+                                .tint(RememberPalette.action)
                             }
                         }
                     }
@@ -47,7 +48,7 @@ struct OrganizeView: View {
                 Section {
                     if viewModel.tagSummaries.isEmpty {
                         Text("Tags suggested during analysis—or added while editing a memory—will appear here.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RememberPalette.secondaryText)
                     } else {
                         ForEach(viewModel.tagSummaries) { tag in
                             NavigationLink {
@@ -57,7 +58,7 @@ struct OrganizeView: View {
                                     LabeledContent(tag.name, value: "\(tag.memoryCount)")
                                 } icon: {
                                     Image(systemName: "tag.fill")
-                                        .foregroundStyle(.purple)
+                                        .foregroundStyle(scheme == .light ? RememberPalette.secondaryText : .purple)
                                 }
                             }
                             .swipeActions(edge: .trailing) {
@@ -67,7 +68,7 @@ struct OrganizeView: View {
                                 Button("Rename", systemImage: "pencil") {
                                     editor = .renameTag(tag)
                                 }
-                                .tint(.purple)
+                                .tint(RememberPalette.action)
                             }
                         }
                     }
@@ -77,6 +78,7 @@ struct OrganizeView: View {
                     Text("Renaming or deleting a tag updates every matching memory and its local search index.")
                 }
         }
+        .rememberGroupedList()
         .navigationTitle("Collections & Tags")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -218,6 +220,7 @@ private struct OrganizationNameEditor: View {
                     .onSubmit { save() }
             }
             .scrollDismissesKeyboard(.interactively)
+            .rememberGroupedList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -281,8 +284,10 @@ private struct CollectionDetailView: View {
                         OrganizationMemoryRow(item: item)
                     }
                 }
+                .rememberGroupedList()
             }
         }
+        .rememberCanvas()
         .navigationTitle(summary.collection.name)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -348,7 +353,7 @@ private struct CollectionMembershipEditor: View {
                                 .foregroundStyle(.tint)
                         } else {
                             Image(systemName: "circle")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(RememberPalette.secondaryText)
                         }
                     }
                 }
@@ -356,6 +361,7 @@ private struct CollectionMembershipEditor: View {
                 .disabled(busyIDs.contains(item.id))
                 .accessibilityLabel("\(item.memory.displayTitle), \(selectedIDs.contains(item.id) ? "in collection" : "not in collection")")
             }
+            .rememberGroupedList()
             .overlay {
                 if items.isEmpty {
                     ContentUnavailableView("No memories yet", systemImage: "square.grid.2x2")
@@ -410,6 +416,7 @@ private struct TagDetailView: View {
                 OrganizationMemoryRow(item: item)
             }
         }
+        .rememberGroupedList()
         .navigationTitle("#\(tag)")
         .overlay {
             if items.isEmpty {
@@ -421,6 +428,7 @@ private struct TagDetailView: View {
 
 private struct OrganizationMemoryRow: View {
     let item: MemoryLibraryItem
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Label {
@@ -431,13 +439,13 @@ private struct OrganizationMemoryRow: View {
                 if let summary = item.memory.displaySummary {
                     Text(summary)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                         .lineLimit(2)
                 }
             }
         } icon: {
             Image(systemName: item.memory.kind.organizationSymbol)
-                .foregroundStyle(item.memory.kind.organizationColor)
+                .foregroundStyle(scheme == .light ? RememberPalette.secondaryText : item.memory.kind.organizationColor)
                 .frame(width: 28)
         }
     }

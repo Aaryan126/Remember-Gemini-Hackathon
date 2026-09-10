@@ -30,7 +30,7 @@ struct RiverMediaView: View {
                     }
                 } else if unavailable {
                     Label("Saved media is unavailable on this device", systemImage: "exclamationmark.triangle")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(RememberPalette.secondaryText)
                 } else {
                     ProgressView("Loading saved media…").frame(maxWidth: .infinity)
                 }
@@ -55,7 +55,7 @@ struct RiverMediaView: View {
     private func photo(at url: URL) -> some View {
         LocalImageView(url: url, maximumPixelSize: 2_400, contentMode: .fit)
             .frame(maxWidth: .infinity).frame(minHeight: 120)
-            .background(Color.black.opacity(0.04))
+            .background(RememberPalette.inset)
             .clipShape(.rect(cornerRadius: 16))
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isImage)

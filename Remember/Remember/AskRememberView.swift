@@ -30,7 +30,7 @@ struct AskRememberView: View {
                                 ProgressView()
                                 Text("Checking your saved memories and their sources…")
                                     .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(RememberPalette.secondaryText)
                                 Spacer()
                             }
                             .padding(.horizontal, 16)
@@ -57,6 +57,7 @@ struct AskRememberView: View {
                     }
                 }
             }
+            .rememberCanvas(dark: .systemBackground)
             .navigationTitle("AI Help")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -68,7 +69,7 @@ struct AskRememberView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Label(aiStatusLabel, systemImage: "cloud.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(RememberPalette.secondaryText)
                         .accessibilityLabel("AI uses the configured OpenAI service")
                 }
                 ToolbarItemGroup(placement: .keyboard) {
@@ -87,7 +88,7 @@ struct AskRememberView: View {
             .safeAreaInset(edge: .top) {
                 if let errorMessage = viewModel.errorMessage {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(RememberPalette.warning)
                         Text(errorMessage).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
                         Button("Dismiss") { viewModel.clearError() }.font(.footnote.weight(.semibold))
                     }
@@ -114,7 +115,7 @@ struct AskRememberView: View {
                 .font(.title2.bold())
             Text("AI searches your saved memories, checks quoted evidence against the originals, and shows the sources it used. Relevant excerpts are sent to the configured OpenAI service.")
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RememberPalette.secondaryText)
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(AskSuggestionBuilder.questions(), id: \.self) { question in
                     suggestion(question)
@@ -135,7 +136,7 @@ struct AskRememberView: View {
                 .font(.subheadline.weight(.medium))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                .rememberCard(radius: 14)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Places this question in the message field")
@@ -162,7 +163,7 @@ struct AskRememberView: View {
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+                .rememberCard(radius: 20)
                 .disabled(viewModel.isAnswering)
 
             Button {
@@ -216,7 +217,7 @@ private struct ChatMessageView: View {
                 .padding(.vertical, 11)
                 .foregroundStyle(message.role == .user ? Color.white : Color.primary)
                 .background(
-                    message.role == .user ? Color.accentColor : Color(uiColor: .secondarySystemBackground),
+                    message.role == .user ? RememberPalette.filledAction : RememberPalette.surface,
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
                 .frame(maxWidth: 600, alignment: message.role == .user ? .trailing : .leading)
@@ -225,7 +226,7 @@ private struct ChatMessageView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Sources from your memories")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                     ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
                         NavigationLink {
                             MemoryDetailView(memoryID: source.id, viewModel: viewModel)
@@ -241,7 +242,7 @@ private struct ChatMessageView: View {
                                     if let summary = source.memory.displaySummary {
                                         Text(summary)
                                             .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(RememberPalette.secondaryText)
                                             .lineLimit(2)
                                     }
                                 }
@@ -251,7 +252,7 @@ private struct ChatMessageView: View {
                                     .foregroundStyle(.tertiary)
                             }
                             .padding(11)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                            .rememberCard(radius: 14)
                         }
                         .buttonStyle(.plain)
                     }
@@ -263,7 +264,7 @@ private struct ChatMessageView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Verified excerpts")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RememberPalette.secondaryText)
                     ForEach(message.citations) { citation in
                         if let source = message.sources.first(where: { $0.id == citation.memoryID }) {
                             NavigationLink {
@@ -274,12 +275,12 @@ private struct ChatMessageView: View {
                                         .font(.caption.weight(.semibold))
                                     Text("“\(citation.excerpt)”")
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(RememberPalette.secondaryText)
                                         .lineLimit(4)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(11)
-                                .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                                .rememberCard(radius: 12, dark: Color(uiColor: .tertiarySystemBackground))
                             }
                             .buttonStyle(.plain)
                             .accessibilityHint("Opens the original saved memory")
@@ -292,7 +293,7 @@ private struct ChatMessageView: View {
             if message.modelVersion != nil {
                 Label(answerStatus, systemImage: message.mode == .grounded ? "checkmark.shield.fill" : "lock.fill")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
                     .accessibilityHint("Model details are available in Settings")
             }
         }
@@ -340,15 +341,15 @@ private struct BasicModeBanner: View {
                     .font(.subheadline.weight(.semibold))
                 Text("\(reason.detail) AI Help will return matching sources without inventing an answer.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
             }
         } icon: {
             Image(systemName: "sparkles.slash")
-                .foregroundStyle(.orange)
+                .foregroundStyle(RememberPalette.warning)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+        .background(RememberPalette.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .combine)
     }
 }

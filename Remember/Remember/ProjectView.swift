@@ -27,6 +27,7 @@ struct ProjectView: View {
                     timeline
                 }
             }
+            .rememberCanvas()
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -63,7 +64,7 @@ struct ProjectView: View {
                             Text(cluster.title).font(.body.weight(.medium))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("\(count) \(count == 1 ? "memory" : "memories")")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                                .font(.subheadline).foregroundStyle(RememberPalette.secondaryText)
                         }
                         .padding(.vertical, 6)
                     }
@@ -82,10 +83,10 @@ struct ProjectView: View {
                         ProvenanceEventRow(event: event, displayMemory: event.memoryID.flatMap { model.snapshot.memories[$0] })
                     }
                 }
-                if events.isEmpty { Text("No activity matches these filters.").foregroundStyle(.secondary) }
+                if events.isEmpty { Text("No activity matches these filters.").foregroundStyle(RememberPalette.secondaryText) }
                 if events.count > limit { Button("Show earlier activity") { limit += 60 } }
             }
-        }.listStyle(.plain)
+        }.rememberGroupedList()
     }
 
     private var events: [ProvenanceEvent] {

@@ -193,7 +193,7 @@ struct MemoryDetailView: View {
             .padding(.bottom, 48)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color(uiColor: .systemBackground))
+        .rememberCanvas(reading: true, dark: .systemBackground)
     }
 
     private func noteContent(for item: MemoryLibraryItem) -> some View {
@@ -218,7 +218,7 @@ struct MemoryDetailView: View {
 
             Text(item.memory.createdAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.footnote)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(RememberPalette.secondaryText)
         }
     }
 
@@ -248,13 +248,13 @@ struct MemoryDetailView: View {
             if editedNote.text.count > InAppCaptureService.maximumNoteLength {
                 Text("Note is too long")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(RememberPalette.warning)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
-        .background(Color(uiColor: .systemBackground))
+        .rememberCanvas(reading: true, dark: .systemBackground)
     }
 
     @ViewBuilder
@@ -271,14 +271,14 @@ struct MemoryDetailView: View {
                     Label(url.host() ?? url.absoluteString, systemImage: "arrow.up.right")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(18)
-                        .background(.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
+                        .rememberCard(radius: 18, dark: Color.accentColor.opacity(0.1))
                 }
             }
         case .pdf:
             Label(item.originalURL.lastPathComponent, systemImage: "doc.richtext")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(18)
-                .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 18))
+                .rememberCard(radius: 18, dark: Color.red.opacity(0.1))
         case .image, .text:
             EmptyView()
         }
@@ -292,7 +292,7 @@ struct MemoryDetailView: View {
             if let summary = distinctSummary(for: memory) {
                 Text(summary)
                     .font(.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
             }
 
             if !memory.tags.isEmpty {
@@ -324,7 +324,7 @@ struct MemoryDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Analysis needs attention", systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(memory.kind == .image ? Color.orange : RememberPalette.warning)
                 Button("Try Again", systemImage: "arrow.clockwise") {
                     Task { await viewModel.retry(id: memoryID) }
                 }
@@ -466,11 +466,8 @@ private struct MemoryEditSheet: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.red)
-                    .background(
-                        Color(uiColor: .secondarySystemBackground),
-                        in: RoundedRectangle(cornerRadius: 14)
-                    )
+                    .foregroundStyle(RememberPalette.danger)
+                    .rememberCard(radius: 14)
                     .disabled(isSaving || isDeleting)
                 }
                 .padding(.horizontal, 20)
@@ -478,6 +475,7 @@ private struct MemoryEditSheet: View {
                 .padding(.bottom, 24)
             }
             .scrollDismissesKeyboard(.interactively)
+            .rememberCanvas(dark: .systemBackground)
             .navigationTitle(editorTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -521,12 +519,12 @@ private struct MemoryEditSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RememberPalette.secondaryText)
             TextField(placeholder, text: text, axis: .vertical)
                 .lineLimit(lineLimit)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 52)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                .rememberCard(radius: 14)
         }
     }
 
@@ -612,12 +610,13 @@ private struct MemoryInformationSheet: View {
                         if let error = item.memory.processingError, !error.isEmpty {
                             Text(error)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(RememberPalette.secondaryText)
                         }
                     }
                 }
 
             }
+            .rememberGroupedList()
             .navigationTitle("Memory Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -633,7 +632,11 @@ private struct MemoryInformationSheet: View {
 
 private struct WrappingTags: View {
     let tags: [String]
-    var color: Color = .accentColor
+    var color: Color?
+    @Environment(\.colorScheme) private var scheme
+
+    private var ink: Color { color ?? (scheme == .dark ? .accentColor : RememberPalette.secondaryText) }
+    private var fill: Color { color.map { $0.opacity(0.14) } ?? (scheme == .dark ? Color.accentColor.opacity(0.14) : RememberPalette.inset) }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -647,10 +650,10 @@ private struct WrappingTags: View {
         ForEach(tags, id: \.self) { tag in
             Text(tag)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(color)
+                .foregroundStyle(ink)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(color.opacity(0.14), in: Capsule())
+                .background(fill, in: Capsule())
         }
     }
 }

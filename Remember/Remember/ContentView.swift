@@ -33,6 +33,7 @@ struct ContentView: View {
                 showsAssistant = false
             }
         }
+        .tint(RememberPalette.action)
         .task {
             await viewModel.synchronize()
         }
@@ -93,6 +94,7 @@ struct MemoryLibraryView: View {
                     library
                 }
             }
+            .rememberCanvas(dark: .systemBackground)
             .navigationTitle("")
             .navigationDestination(for: UUID.self) { id in
                 MemoryDetailView(memoryID: id, viewModel: viewModel)
@@ -271,7 +273,7 @@ struct MemoryLibraryView: View {
                         ProgressView()
                         Text("Importing and analyzing your memory")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RememberPalette.secondaryText)
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -316,7 +318,7 @@ struct MemoryLibraryView: View {
             Spacer()
             if viewModel.usedAIForCurrentSearch {
                 Label("AI-assisted", systemImage: "sparkles")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(RememberPalette.action)
             } else if !viewModel.searchRequest.normalizedQuery.isEmpty {
                 Button("Try AI search", systemImage: "sparkles") {
                     Task { await viewModel.searchWithAI() }
@@ -324,11 +326,11 @@ struct MemoryLibraryView: View {
                 .disabled(viewModel.isSearching)
             } else {
                 Label("Private", systemImage: "lock.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(RememberPalette.success)
             }
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(RememberPalette.secondaryText)
     }
 
     private var noSearchResults: some View {
@@ -362,7 +364,7 @@ struct MemoryLibraryView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(RememberPalette.warning)
             Text(message)
                 .font(.footnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -480,8 +482,7 @@ private struct MemoryCard: View {
                 compactCard
             }
         }
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .rememberCard(raised: true)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens memory details")
     }
@@ -502,7 +503,7 @@ private struct MemoryCard: View {
             }
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 96)
-                .background(Color(uiColor: .tertiarySystemBackground))
+                .background(RememberPalette.inset)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(item.memory.displayTitle)
@@ -525,7 +526,7 @@ private struct MemoryCard: View {
             if let summary = distinctSummary {
                 Text(summary)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
                     .lineLimit(6)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -549,7 +550,7 @@ private struct MemoryCard: View {
         if item.memory.state != .indexed {
             Text(item.memory.state.label)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(item.memory.state == .failed ? Color.orange : Color.secondary)
+                .foregroundStyle(item.memory.state == .failed ? RememberPalette.warning : RememberPalette.secondaryText)
         }
     }
 }
@@ -618,9 +619,9 @@ struct ProcessingStateLabel: View {
     private var color: Color {
         switch state {
         case .captured: .secondary
-        case .processing: .blue
-        case .indexed: .green
-        case .failed: .orange
+        case .processing: RememberPalette.action
+        case .indexed: RememberPalette.success
+        case .failed: RememberPalette.warning
         }
     }
 }

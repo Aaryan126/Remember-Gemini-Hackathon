@@ -59,7 +59,7 @@ struct SettingsView: View {
                     Text("Automatic capture and topic organization use Apple’s on-device tools by default. Cloud assistance sends source excerpts (and images during enrichment) to the configured OpenAI service. Ask and AI search send relevant content when you explicitly use them, independently of this setting.")
                 }
             }
-            .listStyle(.insetGrouped)
+            .rememberGroupedList()
             .listSectionSpacing(16)
             .environment(\.defaultMinListRowHeight, 52)
             .navigationTitle("")
@@ -70,7 +70,7 @@ struct SettingsView: View {
             .safeAreaInset(edge: .bottom) {
                 if let errorMessage = viewModel.errorMessage {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(RememberPalette.warning)
                         Text(errorMessage).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
                         Button("Dismiss") { viewModel.clearError() }.font(.footnote.weight(.semibold))
                     }
@@ -100,7 +100,7 @@ private struct SettingsRow: View {
                     .foregroundStyle(.primary)
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
                     .lineLimit(1)
             }
         }
@@ -123,12 +123,14 @@ private struct SettingsLabel: View {
 
 private struct SettingsIcon: View {
     let systemImage: String
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Image(systemName: systemImage)
             .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.primary)
             .frame(width: 30, height: 30)
+            .background(scheme == .light ? RememberPalette.inset : .clear, in: .rect(cornerRadius: 8))
             .accessibilityHidden(true)
     }
 }

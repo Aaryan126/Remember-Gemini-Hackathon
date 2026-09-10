@@ -40,7 +40,7 @@ struct CaptureMenuButton: View {
                     .foregroundStyle(.white)
                     .frame(width: hubSize, height: hubSize)
                     .contentTransition(.symbolEffect(.replace))
-                    .glassEffect(.regular.tint(Color.accentColor).interactive(), in: .circle)
+                    .glassEffect(.regular.tint(RememberPalette.action).interactive(), in: .circle)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -290,12 +290,13 @@ struct NewNoteCaptureView: View {
                 if note.text.count > InAppCaptureService.maximumNoteLength {
                     Text("Note is too long")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(RememberPalette.warning)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
+            .rememberCanvas(reading: true, dark: .systemBackground)
             .navigationTitle("New Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -360,12 +361,13 @@ struct ImageCaptureConfirmationView: View {
                 }
                 if kind == .video {
                     Text("The original video stays on this device. Only your caption is indexed; video scenes and speech are not analyzed.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(RememberPalette.secondaryText)
                 }
                 if let error = viewModel.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(RememberPalette.warning)
                 }
             }
+            .rememberGroupedList()
             .navigationTitle(kind == .video ? "Add Video" : "Add Photo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -415,7 +417,7 @@ struct AssistantVoiceInputView: View {
                 Spacer()
                 Image(systemName: recorder.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 76))
-                    .foregroundStyle(recorder.isRecording ? .red : .accentColor)
+                    .foregroundStyle(recorder.isRecording ? RememberPalette.danger : RememberPalette.action)
                     .symbolEffect(.pulse, isActive: recorder.isRecording)
                     .accessibilityHidden(true)
                 Text(title)
@@ -427,7 +429,7 @@ struct AssistantVoiceInputView: View {
                 if recorder.isRecording {
                     Button("Stop Recording", systemImage: "stop.fill") { recorder.stop() }
                         .buttonStyle(.borderedProminent)
-                        .tint(.red)
+                        .tint(RememberPalette.danger)
                         .controlSize(.large)
                 } else {
                     Button(recorder.state == .recorded ? "Record Again" : "Start Recording", systemImage: "mic.fill") {
@@ -456,16 +458,17 @@ struct AssistantVoiceInputView: View {
                 if case .failed(let message) = recorder.state {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(RememberPalette.warning)
                         .multilineTextAlignment(.center)
                 }
                 Spacer()
                 Label("This recording is transcribed locally and is not saved as a memory", systemImage: "lock.fill")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RememberPalette.secondaryText)
                     .multilineTextAlignment(.center)
             }
             .padding(24)
+            .rememberCanvas(dark: .systemBackground)
             .navigationTitle("Speak a Question")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
