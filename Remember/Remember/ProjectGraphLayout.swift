@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// Display-only relationships; never feeds back into automatic topic organization.
 nonisolated struct ProjectGraphMap {
@@ -64,29 +65,73 @@ nonisolated struct ProjectGraphMap {
     }
 }
 
-/// Stable staggered circles. Logarithmic sizing shows volume without letting a
-/// very large thread overwhelm small ones or change the size of unrelated nodes.
+/// A center-out hexagonal lattice, with six equidistant neighbors per complete ring.
 nonisolated struct ProjectGraphLayout {
+    static let maximumMagnification: CGFloat = 1.16
+    static let focusMagnification: CGFloat = 1.06
     let memberCounts: [Int]
-    init(count: Int) { memberCounts = Array(repeating: 1, count: max(0, count)) }
-    init(memberCounts: [Int]) { self.memberCounts = memberCounts }
-    var count: Int { memberCounts.count }
-    var columns: Int { count <= 1 ? 1 : count <= 8 ? 2 : 4 }
-    var rows: Int { max(1, (count + columns - 1) / columns) }
-    private var pitch: CGFloat { (memberCounts.indices.map(diameter).max() ?? 116) + 24 }
-    var size: CGSize {
-        CGSize(width: CGFloat(columns) * pitch + 28, height: CGFloat(rows) * pitch + (columns > 1 ? pitch / 4 : 0) + 28)
+    private let points: [CGPoint]
+    let size: CGSize
+    let centralIndex: Int?
+    init(count: Int) { self.init(memberCounts: Array(repeating: 1, count: max(0, count))) }
+    init(memberCounts: [Int]) {
+        self.memberCounts = memberCounts
+        let central = memberCounts.indices.max { memberCounts[$0] < memberCounts[$1] }
+        centralIndex = central
+        // Reserve room for the largest focused circle without moving any slots.
+        let pitch = (memberCounts.map { Self.diameter(for: $0) }.max() ?? 116)
+            * Self.maximumMagnification * Self.focusMagnification + 12
+        var lattice = [CGPoint.zero]
+        var ring = 1
+        let directions = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
+        while lattice.count < memberCounts.count {
+            var q = 0, r = -ring
+            for (dq, dr) in directions {
+                for _ in 0..<ring {
+                    lattice.append(CGPoint(x: (CGFloat(q) + CGFloat(r) / 2) * pitch,
+                                           y: CGFloat(r) * sqrt(3) / 2 * pitch))
+                    q += dq; r += dr
+                }
+            }
+            ring += 1
+        }
+        let radius = CGFloat(max(0, ring - 1)) * pitch + pitch / 2 + 14
+        size = CGSize(width: radius * 2, height: radius * 2)
+        var arranged = Array(repeating: CGPoint(x: radius, y: radius), count: memberCounts.count)
+        // Keep source indices/IDs intact while placing the largest thread at the lens center.
+        let indices = central.map { center in [center] + memberCounts.indices.filter { $0 != center } } ?? []
+        for (slot, index) in indices.enumerated() {
+            arranged[index] = CGPoint(x: lattice[slot].x + radius, y: lattice[slot].y + radius)
+        }
+        points = arranged
     }
+    var count: Int { memberCounts.count }
 
     func diameter(_ index: Int) -> CGFloat {
-        116 + min(56, 22 * log2(CGFloat(max(1, memberCounts[index]))))
+        Self.diameter(for: memberCounts[index])
     }
 
-    func position(_ index: Int) -> CGPoint {
-        let column = index % columns
-        let row = index / columns
-        return CGPoint(x: 14 + pitch / 2 + CGFloat(column) * pitch,
-                       y: 14 + pitch / 2 + CGFloat(row) * pitch + (column.isMultiple(of: 2) ? 0 : pitch / 4))
+    private static func diameter(for count: Int) -> CGFloat {
+        116 + min(56, 22 * log2(CGFloat(max(1, count))))
+    }
+
+    func position(_ index: Int) -> CGPoint { points[index] }
+
+    /// Snap only to occupied slots, including at incomplete outer rings.
+    func snapTarget(for pan: CGSize, scale: CGFloat) -> (index: Int, pan: CGSize)? {
+        guard scale.isFinite, scale > 0, pan.width.isFinite, pan.height.isFinite else { return nil }
+        var nearest: (index: Int, pan: CGSize)?
+        var shortestDistance = CGFloat.infinity
+        for index in points.indices {
+            let target = CGSize(width: (size.width / 2 - points[index].x) * scale,
+                                height: (size.height / 2 - points[index].y) * scale)
+            let distance = hypot(target.width - pan.width, target.height - pan.height)
+            if distance < shortestDistance {
+                shortestDistance = distance
+                nearest = (index, target)
+            }
+        }
+        return nearest
     }
 
     static func browsingScale(in viewport: CGSize) -> CGFloat {

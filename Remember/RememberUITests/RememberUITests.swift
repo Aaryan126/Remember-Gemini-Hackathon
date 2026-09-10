@@ -225,6 +225,15 @@ final class RememberUITests: XCTestCase {
         app.navigationBars[title].buttons["BackButton"].tap()
     }
 
+    @MainActor
+    private func waitForMapCenter(_ node: XCUIElement, at frame: CGRect, file: StaticString = #filePath, line: UInt = #line) {
+        // Display-link frames aren't tracked by XCTest's implicit-animation idle wait.
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(node.frame.midX - frame.midX) < 1 && abs(node.frame.midY - frame.midY) < 1
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 3), .completed, file: file, line: line)
+    }
+
     /// Safe for a connected phone: does not seed, edit, archive, or restore memories.
     @MainActor
     func testExistingMapFocusHoldDragAndReturn() throws {
@@ -235,13 +244,26 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
         let previousView = picker.buttons["Timeline"].isSelected ? "Timeline" : "Graph"
         picker.buttons["Graph"].tap()
+        app.buttons["Recenter map"].tap()
         let node = try visibleMapNode(in: app)
         let original = node.frame
+        let canvasFrame = app.descendants(matching: .any)["memory-map-canvas"].frame
+        let neighbor = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "graph-node-"))
+            .allElementsBoundByIndex.first { $0.identifier != node.identifier && canvasFrame.contains($0.frame) }
+        let neighborID = neighbor?.identifier
+        let neighborFrame = neighbor?.frame
         node.press(forDuration: 0.7)
         XCTAssertFalse(app.navigationBars["Thread history"].exists, "A hold highlights; only a quick tap enters the River.")
         XCTAssertTrue(node.isSelected)
         XCTAssertGreaterThan(node.frame.width, original.width)
+        XCTAssertEqual(node.frame.midX, original.midX, accuracy: 1)
+        XCTAssertEqual(node.frame.midY, original.midY, accuracy: 1)
+        if let neighborID, let neighborFrame {
+            XCTAssertEqual(app.buttons[neighborID].frame.midX, neighborFrame.midX, accuracy: 1)
+            XCTAssertEqual(app.buttons[neighborID].frame.midY, neighborFrame.midY, accuracy: 1)
+        }
         XCTAssertTrue(app.buttons["Clear focus"].exists)
+        XCTAssertTrue(app.buttons["map-focus-preview"].waitForExistence(timeout: 3))
         let held = XCTAttachment(screenshot: app.screenshot())
         held.name = "Memory map held focus"
         held.lifetime = .keepAlways
@@ -249,16 +271,67 @@ final class RememberUITests: XCTestCase {
 
         let center = node.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.press(forDuration: 0.1, thenDragTo: center.withOffset(CGVector(dx: 35, dy: 18)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        waitForMapCenter(node, at: original)
         XCTAssertFalse(app.navigationBars["Thread history"].exists)
         XCTAssertTrue(node.isSelected)
-        XCTAssertGreaterThan(node.frame.midX, original.midX + 20)
+        XCTAssertEqual(node.frame.midX, original.midX, accuracy: 2, "A short drag must settle back on the same center node.")
+        XCTAssertEqual(node.frame.midY, original.midY, accuracy: 2)
+        if let neighborID, let neighborFrame {
+            let movedNeighbor = app.buttons[neighborID].frame
+            XCTAssertEqual(movedNeighbor.midX - neighborFrame.midX, node.frame.midX - original.midX, accuracy: 2,
+                           "Dragging must translate all grid slots by the same amount.")
+            XCTAssertEqual(movedNeighbor.midY - neighborFrame.midY, node.frame.midY - original.midY, accuracy: 2)
+        }
         app.buttons["Clear focus"].tap()
         XCTAssertFalse(node.isSelected)
+        XCTAssertFalse(app.buttons["map-focus-preview"].exists)
         app.buttons["Recenter map"].tap()
         let fitted = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             abs(node.frame.width - original.width) < 2 && abs(node.frame.midX - original.midX) < 2
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [fitted], timeout: 3), .completed)
+
+        if let neighborID, let neighborFrame {
+            let nextNode = app.buttons[neighborID]
+            let delta = CGVector(dx: (original.midX - neighborFrame.midX) * 0.72,
+                                 dy: (original.midY - neighborFrame.midY) * 0.72)
+            let lensStart = node.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            lensStart.press(forDuration: 0.1, thenDragTo: lensStart.withOffset(delta),
+                            withVelocity: .slow, thenHoldForDuration: 0.2)
+            waitForMapCenter(nextNode, at: original)
+            XCTAssertEqual(nextNode.frame.midX, original.midX, accuracy: 2, "Release must finish centering the nearest occupied slot.")
+            XCTAssertEqual(nextNode.frame.midY, original.midY, accuracy: 2)
+            XCTAssertTrue(nextNode.isSelected)
+            XCTAssertFalse(app.buttons["map-focus-preview"].exists, "Snapping must not open a preview or River.")
+            XCTAssertLessThan(node.frame.width, original.width * 0.96)
+            XCTAssertEqual(node.frame.midX - original.midX, nextNode.frame.midX - neighborFrame.midX, accuracy: 2)
+            XCTAssertEqual(node.frame.midY - original.midY, nextNode.frame.midY - neighborFrame.midY, accuracy: 2)
+            let settled = XCTAttachment(screenshot: app.screenshot())
+            settled.name = "Memory map snapped to neighboring thread"
+            settled.lifetime = .keepAlways
+            add(settled)
+            let reverse = nextNode.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            reverse.press(forDuration: 0.1, thenDragTo: reverse.withOffset(CGVector(dx: -delta.dx, dy: -delta.dy)),
+                          withVelocity: .slow, thenHoldForDuration: 0.2)
+            waitForMapCenter(node, at: original)
+            XCTAssertEqual(node.frame.midX, original.midX, accuracy: 2)
+            XCTAssertEqual(node.frame.midY, original.midY, accuracy: 2)
+        }
+        app.buttons["Recenter map"].tap()
+        waitForMapCenter(node, at: original)
+        XCTAssertEqual(node.frame.width, original.width, accuracy: 2)
+
+        // Quick releases exercise the handoff without a stationary hold at the end.
+        for delta in [CGVector(dx: 28, dy: -16), CGVector(dx: -25, dy: 18)] {
+            let start = node.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(delta),
+                        withVelocity: .fast, thenHoldForDuration: 0)
+            let centered = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                abs(node.frame.midX - original.midX) < 2 && abs(node.frame.midY - original.midY) < 2
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [centered], timeout: 3), .completed)
+            XCTAssertFalse(app.navigationBars["Thread history"].exists)
+        }
 
         for _ in 0..<2 {
             node.tap()
@@ -268,6 +341,11 @@ final class RememberUITests: XCTestCase {
             XCTAssertTrue(node.waitForExistence(timeout: 5))
             XCTAssertTrue(node.isHittable, "The zoom source must remain usable after returning.")
         }
+        node.press(forDuration: 0.7)
+        app.buttons["map-focus-preview"].tap()
+        XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
+        tapUncoveredBack(in: app, title: "Thread history")
+        XCTAssertFalse(app.buttons["map-focus-preview"].exists)
         app.buttons["Clear focus"].tap()
         picker.buttons[previousView].tap()
         app.tabBars.buttons["Memories"].tap()
@@ -294,7 +372,8 @@ final class RememberUITests: XCTestCase {
         assertMapDoesNotZoom(in: app, node: first)
         let start = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 35, dy: 15)))
-        XCTAssertGreaterThan(first.frame.midX, originalFrame.midX + 15)
+        waitForMapCenter(first, at: originalFrame)
+        XCTAssertEqual(first.frame.midX, originalFrame.midX, accuracy: 2, "Short drags snap back to the centered circle.")
         app.buttons["Recenter map"].tap()
         let expectsPhoto = first.value as? String == "Photos"
         first.tap()
@@ -422,9 +501,14 @@ final class RememberUITests: XCTestCase {
         let canvas = app.descendants(matching: .any)["memory-map-canvas"].firstMatch
         XCTAssertTrue(canvas.exists)
         // Fixed-scale maps intentionally have offscreen nodes in larger libraries.
-        let visible = try XCTUnwrap(nodes.allElementsBoundByIndex.first {
+        let candidates = nodes.allElementsBoundByIndex.filter {
             $0.isHittable && canvas.frame.insetBy(dx: 1, dy: 1).contains($0.frame)
                 && $0.frame.maxY < app.buttons["Recenter map"].frame.minY
+        }
+        let center = CGPoint(x: canvas.frame.midX, y: canvas.frame.midY - 20)
+        let visible = try XCTUnwrap(candidates.min {
+            hypot($0.frame.midX - center.x, $0.frame.midY - center.y)
+                < hypot($1.frame.midX - center.x, $1.frame.midY - center.y)
         }, "At least one complete circle should be visible in the browsing viewport.")
         // Focus raises z-order, so an index-based query can start resolving a different circle.
         return app.buttons[visible.identifier]
@@ -478,7 +562,8 @@ final class RememberUITests: XCTestCase {
         assertMapDoesNotZoom(in: app, node: first)
         let panStart = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         panStart.press(forDuration: 0.1, thenDragTo: panStart.withOffset(CGVector(dx: 35, dy: 15)))
-        XCTAssertGreaterThan(first.frame.midX, originalFrame.midX + 15)
+        waitForMapCenter(first, at: originalFrame)
+        XCTAssertEqual(first.frame.midX, originalFrame.midX, accuracy: 2, "Short drags snap back to the centered circle.")
         app.buttons["Recenter map"].tap()
         first.tap()
         XCTAssertTrue(app.navigationBars["Thread history"].waitForExistence(timeout: 5))
@@ -508,9 +593,12 @@ final class RememberUITests: XCTestCase {
 
     @MainActor
     func testMemoryMapAccessibilityTextSize() throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Creates a synthetic accessibility fixture; simulator only.")
+        #else
         let app = XCUIApplication()
         app.launch()
-        let title = "Accessible memory map source"
+        let title = "Accessible memory map source \(UUID().uuidString.prefix(6))"
         if !app.buttons[title].firstMatch.exists {
             app.buttons["Add a memory"].tap()
             app.buttons["New Note"].tap()
@@ -534,7 +622,9 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["All threads"].exists)
         let threads = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "project-topic-"))
         XCTAssertGreaterThan(threads.count, 0)
-        let firstThread = app.buttons[threads.firstMatch.identifier]
+        // Use this run's source, not an old thread whose capture can precede the River's history window.
+        let firstThread = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "project-topic-", title)).firstMatch
+        revealTimelineThread(firstThread, title: title, in: app)
         for _ in 0..<6 where firstThread.frame.maxY > app.tabBars.firstMatch.frame.minY {
             app.swipeUp()
         }
@@ -552,6 +642,7 @@ final class RememberUITests: XCTestCase {
         river.name = "River first-line junction alignment at accessibility text size"
         river.lifetime = .keepAlways
         add(river)
+        #endif
     }
 
     @MainActor

@@ -4,23 +4,93 @@ import Testing
 @testable import Remember
 
 struct GraphInteractionTests {
-    @Test func mapDepthBringsTheCenterForwardAndTracksPanning() {
+    @Test @MainActor func snapAnimationStartsAtReleaseAndEasesEveryFrame() {
+        let layout = ProjectGraphLayout(count: 7)
+        for release in [CGSize(width: 35, height: 18), CGSize(width: -65, height: 90), CGSize(width: 10, height: -8)] {
+            for rate: Double in [30, 60, 120] {
+                let motion = ProjectGraphMotion()
+                motion.beginDrag()
+                motion.drag(translation: release, layout: layout, viewport: CGSize(width: 370, height: 600), scale: 1)
+                motion.settle(to: .zero, animated: true)
+                #expect(motion.position == release, "Releasing must not reset or jump the presentation offset.")
+                #expect(motion.isSettling && !motion.isDragging)
+                let distance = hypot(release.width, release.height)
+                var previous = motion.position
+                var remaining = distance
+                for _ in 0..<Int(ceil(ProjectGraphMotion.duration * rate)) {
+                    motion.advance(by: 1 / rate)
+                    let next = motion.position
+                    let step = hypot(next.width - previous.width, next.height - previous.height)
+                    #expect(step < distance * 0.17)
+                    let nextRemaining = hypot(next.width, next.height)
+                    #expect(nextRemaining <= remaining)
+                    previous = next; remaining = nextRemaining
+                }
+                #expect(motion.position == .zero)
+                #expect(!motion.isSettling)
+            }
+        }
+    }
+
+    @Test @MainActor func grabbingMidSnapContinuesFromVisiblePositionAndDiscardsOldTarget() {
+        let layout = ProjectGraphLayout(count: 7)
+        let viewport = CGSize(width: 370, height: 600)
+        let motion = ProjectGraphMotion()
+        motion.beginDrag()
+        motion.drag(translation: CGSize(width: 45, height: 30), layout: layout, viewport: viewport, scale: 1)
+        motion.settle(to: .zero, animated: true)
+        motion.advance(by: 0.12)
+        let visible = motion.position
+        #expect(visible != .zero)
+        motion.beginDrag()
+        #expect(motion.position == visible && !motion.isSettling)
+        motion.drag(translation: CGSize(width: -20, height: 8), layout: layout, viewport: viewport, scale: 1)
+        let dragged = CGSize(width: visible.width - 20, height: visible.height + 8)
+        #expect(motion.position == dragged)
+        motion.advance(by: 1)
+        #expect(motion.position == dragged, "A cancelled frame cannot revive the previous snap.")
+        let target = CGSize(width: -80, height: 90)
+        motion.settle(to: target, animated: true)
+        #expect(motion.position == dragged)
+        motion.advance(by: ProjectGraphMotion.duration)
+        #expect(motion.position == target && !motion.isSettling)
+    }
+
+    @Test @MainActor func snapMotionStopsForReducedMotionNoOpAndDisappearance() {
+        let motion = ProjectGraphMotion()
+        motion.settle(to: .zero, animated: true)
+        #expect(!motion.isSettling)
+        let target = CGSize(width: 80, height: -40)
+        motion.settle(to: target, animated: false)
+        #expect(motion.position == target && !motion.isSettling)
+        motion.settle(to: .zero, animated: true)
+        motion.advance(by: 0.1)
+        let visible = motion.position
+        motion.stop()
+        motion.advance(by: 1)
+        #expect(motion.position == visible && !motion.isSettling && !motion.isDragging)
+    }
+
+    @Test func mapDepthBringsTheCenterForwardAndTracksPanning() throws {
         let layout = ProjectGraphLayout(memberCounts: [1, 1, 1, 1, 1, 1])
         let viewport = CGSize(width: 370, height: 460)
         let scale = ProjectGraphLayout.browsingScale(in: viewport)
         let initial = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: .zero,
             focusedIndex: nil, reduceMotion: false)
         let center = CGPoint(x: viewport.width / 2, y: (viewport.height - 40) / 2)
-        let offset = CGSize(width: center.x - initial.nodes[0].center.x, height: center.y - initial.nodes[0].center.y)
+        let peripheral = try #require((0..<layout.count).first { $0 != layout.centralIndex })
+        let point = layout.position(peripheral)
+        let offset = CGSize(width: (layout.size.width / 2 - point.x) * scale,
+                            height: (layout.size.height / 2 - point.y) * scale)
         let centered = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: offset,
             focusedIndex: nil, reduceMotion: false)
-        #expect(centered.nodes[0].diameter > initial.nodes[0].diameter)
-        #expect(abs(centered.nodes[0].scale - scale * 1.04) < 0.00001)
-        #expect(centered.hitTest(center) == 0)
+        #expect(centered.nodes[peripheral].diameter > initial.nodes[peripheral].diameter * 1.15)
+        #expect(abs(centered.nodes[peripheral].scale - scale * 1.16) < 0.00001)
+        #expect(centered.hitTest(center) == peripheral)
         #expect(centered.hitTest(CGPoint(x: -10000, y: -10000)) == nil)
     }
 
-    @Test func mapFocusLiftsTheNodeAndMakesRoomWithoutMovingSavedPositions() {
+    @Test func mapFocusMagnifiesWithoutMovingAnyGridSlot() {
         let layout = ProjectGraphLayout(memberCounts: [2, 2])
         let viewport = CGSize(width: 370, height: 460)
         let idle = ProjectGraphProjection(layout: layout, viewport: viewport, scale: 1, pan: .zero,
@@ -31,7 +101,8 @@ struct GraphInteractionTests {
         #expect(abs(focus.nodes[0].diameter / idle.nodes[0].diameter - 1.06) < 0.00001)
         let before = hypot(idle.nodes[1].center.x - idle.nodes[0].center.x, idle.nodes[1].center.y - idle.nodes[0].center.y)
         let after = hypot(focus.nodes[1].center.x - focus.nodes[0].center.x, focus.nodes[1].center.y - focus.nodes[0].center.y)
-        #expect(after > before && after - before <= 7)
+        #expect(after == before)
+        #expect(focus.nodes[1].center == idle.nodes[1].center)
         #expect(focus.hitTest(focus.nodes[0].center) == 0)
     }
 
@@ -200,9 +271,135 @@ struct GraphInteractionTests {
             let center = CGPoint(x: viewport.width / 2, y: (viewport.height - 40) / 2)
             let overview = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: .zero,
                 focusedIndex: nil, reduceMotion: false)
-            for node in overview.nodes {
-                let desired = CGSize(width: center.x - node.center.x, height: center.y - node.center.y)
+            for index in overview.nodes.indices {
+                let point = layout.position(index)
+                let desired = CGSize(width: (layout.size.width / 2 - point.x) * scale,
+                                     height: (layout.size.height / 2 - point.y) * scale)
                 #expect(ProjectGraphLayout.boundedPan(desired, content: layout.size, viewport: viewport, scale: scale) == desired)
+                let centered = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale, pan: desired,
+                    focusedIndex: nil, reduceMotion: false)
+                #expect(abs(centered.nodes[index].center.x - center.x) < 0.00001)
+                #expect(abs(centered.nodes[index].center.y - center.y) < 0.00001)
+            }
+        }
+    }
+
+    @Test func honeycombHasSixEquidistantNeighborsAndCentersTheLargestThread() throws {
+        let layout = ProjectGraphLayout(memberCounts: [1, 1, 8, 1, 1, 1, 1])
+        #expect(layout.centralIndex == 2)
+        let center = layout.position(2)
+        #expect(center == CGPoint(x: layout.size.width / 2, y: layout.size.height / 2))
+        let neighbors = (0..<7).filter { $0 != 2 }.map(layout.position)
+        let radius = hypot(neighbors[0].x - center.x, neighbors[0].y - center.y)
+        for point in neighbors { #expect(abs(hypot(point.x - center.x, point.y - center.y) - radius) < 0.00001) }
+        for index in neighbors.indices {
+            let a = neighbors[index], b = neighbors[(index + 1) % 6]
+            #expect(abs(hypot(a.x - b.x, a.y - b.y) - radius) < 0.00001)
+        }
+    }
+
+    @Test func snappingCentersEveryOccupiedSlotAndIsIdempotent() throws {
+        for count in [1, 6, 19, 40] {
+            let layout = ProjectGraphLayout(memberCounts: (0..<count).map { 1 + $0 % 8 })
+            for scale: CGFloat in [0.8, 1] {
+                for index in 0..<count {
+                    let point = layout.position(index)
+                    let exact = CGSize(width: (layout.size.width / 2 - point.x) * scale,
+                                       height: (layout.size.height / 2 - point.y) * scale)
+                    for drift in [CGSize.zero, CGSize(width: 25, height: -30), CGSize(width: -35, height: 20)] {
+                        let released = CGSize(width: exact.width + drift.width, height: exact.height + drift.height)
+                        let target = try #require(layout.snapTarget(for: released, scale: scale))
+                        #expect(target.index == index)
+                        #expect(target.pan == exact)
+                        #expect(layout.snapTarget(for: target.pan, scale: scale)?.pan == exact)
+                        let viewport = CGSize(width: 370, height: 600)
+                        #expect(ProjectGraphLayout.boundedPan(exact, content: layout.size, viewport: viewport, scale: scale) == exact)
+                        let projection = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale,
+                            pan: target.pan, focusedIndex: index, reduceMotion: false)
+                        #expect(abs(projection.nodes[index].center.x - 185) < 0.00001)
+                        #expect(abs(projection.nodes[index].center.y - 280) < 0.00001)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func snappingChoosesNearestExistingNodeAtEdgesAndAcrossThreshold() throws {
+        let layout = ProjectGraphLayout(count: 6)
+        let center = try #require(layout.centralIndex)
+        let neighbor = try #require((0..<layout.count).first { $0 != center })
+        let point = layout.position(neighbor)
+        let target = CGSize(width: layout.size.width / 2 - point.x, height: layout.size.height / 2 - point.y)
+        #expect(layout.snapTarget(for: CGSize(width: target.width * 0.45, height: target.height * 0.45), scale: 1)?.index == center)
+        #expect(layout.snapTarget(for: CGSize(width: target.width * 0.55, height: target.height * 0.55), scale: 1)?.index == neighbor)
+        for released in [CGSize(width: 900, height: -800), CGSize(width: -700, height: 950)] {
+            let snapped = try #require(layout.snapTarget(for: released, scale: 1))
+            let distance = hypot(snapped.pan.width - released.width, snapped.pan.height - released.height)
+            for index in 0..<layout.count {
+                let p = layout.position(index)
+                let candidate = hypot(layout.size.width / 2 - p.x - released.width, layout.size.height / 2 - p.y - released.height)
+                #expect(distance <= candidate + 0.00001)
+            }
+        }
+        #expect(ProjectGraphLayout(count: 0).snapTarget(for: .zero, scale: 1) == nil)
+        #expect(layout.snapTarget(for: .zero, scale: 0) == nil)
+        #expect(layout.snapTarget(for: CGSize(width: CGFloat.nan, height: 0), scale: 1) == nil)
+    }
+
+    @Test func lensMagnifiesSizesWhileCentersTrackPanExactly() {
+        let layout = ProjectGraphLayout(count: 1)
+        let viewport = CGSize(width: 370, height: 600)
+        var previousX: CGFloat = -.infinity
+        var previousSize: CGFloat = .infinity
+        for offset in stride(from: CGFloat(0), through: 600, by: 10) {
+            let projection = ProjectGraphProjection(layout: layout, viewport: viewport, scale: 1,
+                pan: CGSize(width: offset, height: 0), focusedIndex: nil, reduceMotion: false)
+            let node = projection.nodes[0]
+            #expect(node.center.x > previousX && node.diameter <= previousSize)
+            #expect(node.scale.isFinite && node.scale > 0)
+            #expect(abs(node.center.x - viewport.width / 2 - offset) < 0.00001)
+            previousX = node.center.x; previousSize = node.diameter
+        }
+    }
+
+    @Test func honeycombSlotsRemainRigidThroughoutPanAndFocusChanges() {
+        for count in [1, 7, 19, 40] {
+            let layout = ProjectGraphLayout(memberCounts: (0..<count).map { 1 + $0 % 8 })
+            for viewport in [CGSize(width: 288, height: 350), CGSize(width: 800, height: 900)] {
+                let scale = ProjectGraphLayout.browsingScale(in: viewport)
+                let origin = CGPoint(x: viewport.width / 2, y: (viewport.height - 40) / 2)
+                for pan in [CGSize.zero, CGSize(width: 120, height: -75), CGSize(width: -260, height: 310)] {
+                    for focus in [nil, 0, count - 1] as [Int?] {
+                        let projection = ProjectGraphProjection(layout: layout, viewport: viewport, scale: scale,
+                            pan: pan, focusedIndex: focus, reduceMotion: false)
+                        for index in 0..<count {
+                            let slot = layout.position(index)
+                            let node = projection.nodes[index]
+                            #expect(abs(node.center.x - origin.x - pan.width - (slot.x - layout.size.width / 2) * scale) < 0.00001)
+                            #expect(abs(node.center.y - origin.y - pan.height - (slot.y - layout.size.height / 2) * scale) < 0.00001)
+                            for next in (index + 1)..<count {
+                                let other = projection.nodes[next]
+                                #expect(hypot(node.center.x - other.center.x, node.center.y - other.center.y)
+                                    >= (node.diameter + other.diameter) / 2 + 10 * scale)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func fullyVisibleLensCirclesRemainUsableTouchTargets() {
+        let layout = ProjectGraphLayout(count: 40)
+        for viewport in [CGSize(width: 288, height: 350), CGSize(width: 370, height: 600)] {
+            for pan in [CGSize.zero, CGSize(width: 170, height: -250)] {
+                let projection = ProjectGraphProjection(layout: layout, viewport: viewport,
+                    scale: ProjectGraphLayout.browsingScale(in: viewport), pan: pan, focusedIndex: nil, reduceMotion: false)
+                for node in projection.nodes {
+                    let frame = CGRect(x: node.center.x - node.diameter / 2, y: node.center.y - node.diameter / 2,
+                                       width: node.diameter, height: node.diameter)
+                    if CGRect(origin: .zero, size: viewport).contains(frame) { #expect(node.diameter >= 44) }
+                }
             }
         }
     }

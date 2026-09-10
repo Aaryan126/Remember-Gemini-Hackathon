@@ -6,6 +6,7 @@ nonisolated struct ProjectGraphProjection {
         let center: CGPoint
         let scale: CGFloat
         let diameter: CGFloat
+        let prominence: CGFloat
     }
 
     let nodes: [Node]
@@ -15,36 +16,20 @@ nonisolated struct ProjectGraphProjection {
         let scale = scale.isFinite && scale > 0 ? scale : 1
         let center = CGPoint(x: viewport.width / 2, y: (viewport.height - 40) / 2)
         let layoutSize = layout.size
-        let positions = (0..<layout.count).map { index in
+        let lensRadius = max(100, min(viewport.width * 0.62, viewport.height * 0.48))
+        nodes = (0..<layout.count).map { index in
             let point = layout.position(index)
-            return CGPoint(x: (point.x - layoutSize.width / 2) * scale + center.x + pan.width,
-                           y: (point.y - layoutSize.height / 2) * scale + center.y + pan.height)
-        }
-        let focus = focusedIndex.flatMap { positions.indices.contains($0) ? positions[$0] : nil }
-        nodes = positions.enumerated().map { index, point in
-            var position = point
-            var depth: CGFloat = 1
-            if !reduceMotion {
-                let x = (point.x - center.x) / max(1, viewport.width * 0.7)
-                let y = (point.y - center.y) / max(1, viewport.height * 0.65)
-                let distance = min(1, x * x + y * y)
-                let falloff = distance * distance * (3 - 2 * distance)
-                depth = 1.04 - 0.14 * falloff
-                if let focus {
-                    if index == focusedIndex {
-                        depth *= 1.06
-                    } else {
-                        let dx = point.x - focus.x, dy = point.y - focus.y
-                        let distance = hypot(dx, dy)
-                        if distance > 0 {
-                            let lift = 7 * scale * max(0, 1 - distance / (280 * scale))
-                            position.x += dx / distance * lift
-                            position.y += dy / distance * lift
-                        }
-                    }
-                }
-            }
-            return Node(center: position, scale: scale * depth, diameter: layout.diameter(index) * scale * depth)
+            let x = (point.x - layoutSize.width / 2) * scale + pan.width
+            let y = (point.y - layoutSize.height / 2) * scale + pan.height
+            // Pan translates one rigid honeycomb. Magnification must never bend
+            // its rows or push neighboring circles out of their assigned slots.
+            let position = CGPoint(x: center.x + x, y: center.y + y)
+            let normalized = hypot(x, y) / lensRadius
+            let magnification = ProjectGraphLayout.maximumMagnification
+            let baseDepth = reduceMotion ? 1 : magnification / sqrt(1 + normalized * normalized)
+            let depth = baseDepth * (!reduceMotion && index == focusedIndex ? ProjectGraphLayout.focusMagnification : 1)
+            return Node(center: position, scale: scale * depth, diameter: layout.diameter(index) * scale * depth,
+                        prominence: min(1, baseDepth / magnification))
         }
     }
 
